@@ -81,8 +81,8 @@ class CarState:
         if self.turn_right:
             self.yaw += turn_rate * dt
 
-        self.vx = target_v * math.sin(self.yaw)
-        self.vz = target_v * math.cos(self.yaw)
+        self.vx = target_v * math.cos(self.yaw)
+        self.vz = target_v * math.sin(self.yaw)
 
         self.x += self.vx * dt
         self.z += self.vz * dt
