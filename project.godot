@@ -1,0 +1,23 @@
+; Pictor - Voxel Map Visualization
+config_version=5
+
+[application]
+config/name="Pictor"
+config/features=PackedStringArray("4.6", "Forward Plus")
+
+[rendering]
+renderer/rendering_method="forward_plus"
+
+[renderer]
+mode="2d"
+
+[autoload]
+
+EventBus="*res://src/event_bus/event_bus.gd"
+
+[websocket]
+url="ws://127.0.0.1:9002"
+reconnect_interval=3.0
+
+[renderer_2d]
+cell_size=0.1
