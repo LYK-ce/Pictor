@@ -177,6 +177,12 @@ renderer/mode = "3d"  →  add_child(Renderer3D)
 
 真实世界的 (x, z) 映射到游戏世界的 (x, z) → Godot `position = Vector2(x × 16, z × 16)`。
 
+`yaw` 角度：
+- `yaw = -π/2` → 朝北（-Z，游戏世界 -Y）— **默认朝向**
+- `yaw = 0`    → 朝东（+X，游戏世界 +X）
+- `yaw = π/2`  → 朝南（+Z，游戏世界 +Y）
+- A/D 键：减小/增大 yaw，即左旋/右旋
+
 ### 应用位置
 
 | 数据 | 转换入口 | 代码 |

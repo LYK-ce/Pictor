@@ -36,11 +36,11 @@ def build_voxel_world(size: int = 20) -> list[dict]:
 
 
 def build_path() -> list[dict]:
-    """从 (0,0) 到 (5,5) 的直线路径"""
+    """从 (10,10) 向北直线路径"""
     points = []
     for i in range(10):
         t = i / 9.0
-        points.append({"x": 5.0 * t, "z": 5.0 * t})
+        points.append({"x": 10.0, "z": 10.0 - 5.0 * t})  # 朝北（Z 减小）
     return points
 
 
@@ -51,7 +51,7 @@ class CarState:
         self.x = 10.0
         self.y = 0.0
         self.z = 10.0
-        self.yaw = 0.0
+        self.yaw = -math.pi / 2.0   # 默认朝北 (-Z，游戏世界 -Y)
         self.vx = 0.0
         self.vz = 0.0
         # 控制状态
