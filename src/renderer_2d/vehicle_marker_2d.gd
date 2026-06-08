@@ -20,7 +20,8 @@ func _draw() -> void:
 	draw_polygon(pts, [col])
 
 
-## 更新位置和朝向
+## 更新位置和朝向（世界坐标 × TILE_SIZE 对齐 TileMap 像素）
 func update_pose(x: float, z: float, yaw: float) -> void:
-	position = Vector2(x, z)
+	const TILE_SIZE := 16.0
+	position = Vector2(x * TILE_SIZE, z * TILE_SIZE)
 	rotation = yaw
