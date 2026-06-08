@@ -20,28 +20,28 @@ POSE_HZ = 10.0  # pose 发送频率
 
 # ─── 模拟地图数据 ────────────────────────────────────────────
 
-def build_voxel_world(size: int = 10) -> list[dict]:
-    """生成 size×size 网格，四周为占用（state=2），内部为空（state=1）"""
+def build_voxel_world(size: int = 20) -> list[dict]:
+    """生成 size×size 网格，全为空闲，仅 (1,1) 处有一个障碍物"""
     voxels = []
     for gx in range(size):
         for gz in range(size):
-            is_wall = (gx == 0 or gx == size - 1 or gz == 0 or gz == size - 1)
+            is_obstacle = (gx == 1 and gz == 1)
             voxels.append({
                 "gx": gx,
                 "gy": 0,
                 "gz": gz,
-                "state": 2 if is_wall else 1,
+                "state": 2 if is_obstacle else 1,
                 "conf": 1.0,
             })
     return voxels
 
 
 def build_path() -> list[dict]:
-    """从 (1,1) 到 (8,8) 的直线路径"""
+    """从 (0,0) 到 (5,5) 的直线路径"""
     points = []
     for i in range(10):
         t = i / 9.0
-        points.append({"x": 1.0 + 7.0 * t, "z": 1.0 + 7.0 * t})
+        points.append({"x": 5.0 * t, "z": 5.0 * t})
     return points
 
 
@@ -49,10 +49,10 @@ def build_path() -> list[dict]:
 
 class CarState:
     def __init__(self):
-        self.x = 1.5
+        self.x = 0.0
         self.y = 0.0
-        self.z = 1.5
-        self.yaw = math.radians(45)
+        self.z = 0.0
+        self.yaw = 0.0
         self.vx = 0.0
         self.vz = 0.0
         # 控制状态

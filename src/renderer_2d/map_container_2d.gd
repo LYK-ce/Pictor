@@ -4,7 +4,7 @@ extends Node2D
 ##
 ## MapContainer2D — 体素地图存储与 TileMapLayer 渲染
 
-const CELL_SIZE := 0.1   # m per grid cell
+const CELL_SIZE := 1.0   # m per grid cell
 const TILE_SIZE := Vector2i(16, 16)
 
 # state → TileSet atlas coords (column, 0)
