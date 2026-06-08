@@ -14,7 +14,8 @@ func _ready() -> void:
 
 ## 设置路径点（世界坐标）
 func set_points(points: Array) -> void:
+	const SCALE := 16.0
 	var pts := PackedVector2Array()
 	for p in points:
-		pts.append(Vector2(p.get("x", 0.0), p.get("z", 0.0)))
+		pts.append(Vector2(p.get("x", 0.0) * SCALE, p.get("z", 0.0) * SCALE))
 	_line.points = pts
