@@ -9,8 +9,8 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 renderer/rendering_method="forward_plus"
 
 [display]
-window/size/viewport_width=1024
-window/size/viewport_height=768
+window/size/viewport_width=1920
+window/size/viewport_height=1080
 
 [renderer]
 mode="2d"
