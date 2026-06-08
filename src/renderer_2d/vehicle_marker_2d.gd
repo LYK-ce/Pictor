@@ -22,6 +22,5 @@ func _draw() -> void:
 
 ## 更新位置和朝向（世界坐标）
 func update_pose(x: float, z: float, yaw: float) -> void:
-	const SCALE := 16.0
-	position = Vector2(x * SCALE, z * SCALE)
+	position = CoordUtils.real_to_game(x, z)
 	rotation = yaw
