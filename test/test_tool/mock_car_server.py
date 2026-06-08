@@ -67,8 +67,8 @@ class CarState:
             self.vz = 0.0
             return
 
-        speed = 0.5
-        turn_rate = math.radians(60)
+        speed = 2.0
+        turn_rate = math.radians(90)
 
         target_v = 0.0
         if self.forward:
