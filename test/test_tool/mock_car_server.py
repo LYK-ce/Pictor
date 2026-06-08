@@ -7,7 +7,6 @@ mock_car_server.py — 小车端模拟器
 import asyncio
 import json
 import math
-import random
 import signal
 import time
 
@@ -139,8 +138,6 @@ async def handler(websocket):
     # 接收 + 发送循环
     pose_interval = 1.0 / POSE_HZ
     last_pose_time = 0.0
-    obstacle_timer = 0.0
-    obstacle_count = 0
 
     async def recv_loop():
         """接收 ctrl 指令"""
@@ -167,25 +164,6 @@ async def handler(websocket):
 
             car.update(dt)
             await websocket.send(json.dumps(car.to_dict()))
-
-            # 随机障碍物
-            obstacle_timer += dt
-            if obstacle_timer > 5.0:
-                obstacle_timer = 0.0
-                o = {
-                    "gx": random.randint(2, 7),
-                    "gy": 0,
-                    "gz": random.randint(2, 7),
-                    "state": 2,
-                    "conf": random.uniform(0.6, 0.95),
-                }
-                await websocket.send(json.dumps({
-                    "type": "voxel_delta",
-                    "ts": time.time(),
-                    "voxels": [o],
-                }))
-                obstacle_count += 1
-                print(f"  → obstacle #{obstacle_count}: ({o['gx']},{o['gz']})")
 
             await asyncio.sleep(pose_interval)
 
