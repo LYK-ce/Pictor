@@ -116,7 +116,7 @@ class CarState:
 async def handler(websocket):
     print(f"[+] client connected: {websocket.remote_address}")
     car = CarState()
-    voxel_world = build_voxel_world(10)
+    voxel_world = build_voxel_world(20)
     path = build_path()
 
     # 发送全量地图
