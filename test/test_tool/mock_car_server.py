@@ -48,9 +48,9 @@ def build_path() -> list[dict]:
 
 class CarState:
     def __init__(self):
-        self.x = 0.0
+        self.x = 10.0
         self.y = 0.0
-        self.z = 0.0
+        self.z = 10.0
         self.yaw = 0.0
         self.vx = 0.0
         self.vz = 0.0
