@@ -28,6 +28,8 @@ var _map: Dictionary = {}   # _map[gx][gz] = {"state","conf","ts","source"}
 
 func _ready() -> void:
 	_setup_tileset()
+	# TileMap 每格 16px，缩小 1/16 使 1 格 = 1 Godot unit = 1m 世界坐标
+	_tile_layer.scale = Vector2(1.0 / 16.0, 1.0 / 16.0)
 
 
 func _setup_tileset() -> void:

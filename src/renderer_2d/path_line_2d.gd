@@ -12,10 +12,9 @@ func _ready() -> void:
 	_line.width = 2.0
 
 
-## 设置路径点（世界坐标 × TILE_SIZE 对齐 TileMap 像素）
+## 设置路径点（世界坐标）
 func set_points(points: Array) -> void:
-	const TILE_SIZE := 16.0
 	var pts := PackedVector2Array()
 	for p in points:
-		pts.append(Vector2(p.get("x", 0.0) * TILE_SIZE, p.get("z", 0.0) * TILE_SIZE))
+		pts.append(Vector2(p.get("x", 0.0), p.get("z", 0.0)))
 	_line.points = pts
