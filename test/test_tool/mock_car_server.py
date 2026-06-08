@@ -138,6 +138,7 @@ async def handler(websocket):
     # 接收 + 发送循环
     pose_interval = 1.0 / POSE_HZ
     last_pose_time = 0.0
+    pose_count = 0
 
     async def recv_loop():
         """接收 ctrl 指令"""
@@ -163,7 +164,13 @@ async def handler(websocket):
             last_pose_time = now
 
             car.update(dt)
-            await websocket.send(json.dumps(car.to_dict()))
+            pose = car.to_dict()
+            await websocket.send(json.dumps(pose))
+
+            # 每 10 条打印一次位置（减少刷屏）
+            pose_count += 1
+            if pose_count % 10 == 0:
+                print(f"  → pose #{pose_count}: x={pose['x']:.2f}, z={pose['z']:.2f}, yaw={pose['yaw']:.2f}, vx={pose['vx']:.2f}, vz={pose['vz']:.2f}")
 
             await asyncio.sleep(pose_interval)
 
