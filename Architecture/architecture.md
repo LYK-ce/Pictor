@@ -150,6 +150,37 @@ renderer/mode = "3d"  →  add_child(Renderer3D)
 ## 数据流
 
 ```
+
 小车 ──ws──→ WebSocketClient ──emit──→ EventBus ──on──→ Renderer
 键盘 ──────→ InputHandler    ──emit──→ EventBus ──on──→ WebSocketClient ──ws──→ 小车
 ```
+
+## 坐标系
+
+### 真实世界 → 游戏世界转换
+
+| 项目 | 真实世界 | 游戏世界 (Godot) |
+|------|------|------|
+| 单位 | 1 米 | 16 游戏单位 |
+| 转换公式 | — | `game = real × 16` |
+| 地图 1 格 | 1m × 1m | 16×16 px (TileMap 默认 tile_size) |
+
+### 坐标轴
+
+```
+真实世界:          游戏世界 (Godot 2D):
+    +Z (南)            +Y (下)
+     ↑                  ↑
+     |                  |
+     +----→ +X (东)     +----→ +X (右)
+```
+
+真实世界的 (x, z) 映射到游戏世界的 (x, z) → Godot `position = Vector2(x × 16, z × 16)`。
+
+### 应用位置
+
+| 数据 | 转换入口 | 代码 |
+|------|------|------|
+| Vehicle pose | `vehicle_marker_2d.gd` | `position = Vector2(x * 16, z * 16)` |
+| Path points | `path_line_2d.gd` | `Vector2(x * 16, z * 16)` |
+| Voxel grid | TileMap 原生 | `set_cell(Vector2i(gx, gz))` — 无需转换，grid 坐标自动对
