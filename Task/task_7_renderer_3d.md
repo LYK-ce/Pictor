@@ -106,4 +106,4 @@ static func real_to_game_3d(x: float, y: float, z: float) -> Vector3:
 
 ## 状态
 
-- [ ] 待开始
+- [x] 已完成 (2026-06-08)

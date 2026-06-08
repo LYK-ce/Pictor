@@ -1,0 +1,15 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/renderer_3d/renderer_3d.gd" id="1_r3d"]
+[ext_resource type="PackedScene" uid="" path="res://src/renderer_3d/map_container_3d.tscn" id="2_map"]
+[ext_resource type="PackedScene" uid="" path="res://src/renderer_3d/vehicle_marker_3d.tscn" id="3_vm"]
+[ext_resource type="PackedScene" uid="" path="res://src/renderer_3d/path_line_3d.tscn" id="4_pl"]
+
+[node name="Renderer3D" type="Node3D"]
+script = ExtResource("1_r3d")
+
+[node name="MapContainer3D" parent="." instance=ExtResource("2_map")]
+
+[node name="VehicleMarker3D" parent="." instance=ExtResource("3_vm")]
+
+[node name="PathLine3D" parent="." instance=ExtResource("4_pl")]
