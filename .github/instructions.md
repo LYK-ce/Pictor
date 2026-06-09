@@ -19,6 +19,12 @@ Date ： Current date
 2. 函数 采用Pascal snake case规范进行命名
 3. 常数 采用Upper snake case规范进行命名
 
+## Godot 规范
+1. 场景引用使用 `@export var xxx_scene: PackedScene`，禁止在 `.gd` 中硬编码 `load("res://...")` 路径
+2. 子节点引用使用 `@onready var xxx := $NodeName`，禁止使用绝对路径 `get_node("/root/...")` 访问
+   - 例外：`EventBus` 是 Autoload，允许 `get_node("/root/EventBus")`
+3. 组件间通信通过 `EventBus` 信号，禁止组件间直接调用方法
+
 # 工作流程
 
 ## 目录结构
