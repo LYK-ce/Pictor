@@ -8,7 +8,5 @@ extends CanvasLayer
 
 
 func _ready() -> void:
-	if not zoom_slider_scene:
-		zoom_slider_scene = load("res://src/ui/zoom_slider/zoom_slider.tscn")
 	if zoom_slider_scene:
 		add_child(zoom_slider_scene.instantiate())
