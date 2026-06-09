@@ -15,10 +15,15 @@ func _ready() -> void:
 	bus.pose_received.connect(_on_pose)
 	bus.voxel_received.connect(_on_voxel)
 	bus.path_received.connect(_on_path)
+	bus.zoom_changed.connect(_on_zoom)
 
-	# 启用 Camera2D
+	# 发出初始 zoom 值，同步 ZoomSlider
+	bus.zoom_changed.emit(1.0)
+
+
+func _on_zoom(zoom: float) -> void:
 	var cam: Camera2D = _vehicle.get_node("Camera2D")
-	cam.enabled = true
+	cam.zoom = Vector2(zoom, zoom)
 
 
 func _on_pose(pose: Dictionary) -> void:

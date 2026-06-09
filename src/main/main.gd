@@ -30,3 +30,8 @@ func _ready() -> void:
 		print("[Main] Renderer not found: ", renderer_path, " — running control-only mode")
 
 	print("[Main] ready: ", get_child_count(), " children")
+
+	# 实例化 UI
+	var ui_scene := load("res://src/ui/ui.tscn")
+	var ui: CanvasLayer = ui_scene.instantiate()
+	add_child(ui)

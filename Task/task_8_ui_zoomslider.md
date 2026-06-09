@@ -90,4 +90,4 @@ signal zoom_changed(zoom: float)
 
 ## 状态
 
-- [ ] 待开始
+- [x] 已完成 (2026-06-09)
