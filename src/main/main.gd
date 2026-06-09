@@ -12,6 +12,12 @@ extends Node
 
 
 func _ready() -> void:
+	if not ws_scene:             ws_scene = load("res://src/websocket_client/websocket_client.tscn")
+	if not ih_scene:             ih_scene = load("res://src/input_handler/input_handler.tscn")
+	if not renderer_2d_scene:    renderer_2d_scene = load("res://src/renderer_2d/renderer_2d.tscn")
+	if not renderer_3d_scene:    renderer_3d_scene = load("res://src/renderer_3d/renderer_3d.tscn")
+	if not ui_scene:             ui_scene = load("res://src/ui/ui.tscn")
+
 	if ws_scene:
 		add_child(ws_scene.instantiate())
 	if ih_scene:
