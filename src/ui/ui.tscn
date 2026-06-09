@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/ui/ui.gd" id="1_ui"]
+[ext_resource type="PackedScene" uid="" path="res://src/ui/zoom_slider/zoom_slider.tscn" id="2_zs"]
 
 [node name="UI" type="CanvasLayer"]
 script = ExtResource("1_ui")
+zoom_slider_scene = ExtResource("2_zs")

@@ -4,8 +4,9 @@ extends CanvasLayer
 ##
 ## UI — 父容器（CanvasLayer），挂载所有 UI 子组件
 
+@export var zoom_slider_scene: PackedScene
+
 
 func _ready() -> void:
-	var zs_scene := load("res://src/ui/zoom_slider/zoom_slider.tscn")
-	var zs := zs_scene.instantiate()
-	add_child(zs)
+	if zoom_slider_scene:
+		add_child(zoom_slider_scene.instantiate())
