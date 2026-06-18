@@ -20,7 +20,7 @@ mode="2d"
 EventBus="*res://src/event_bus/event_bus.gd"
 
 [websocket]
-url="ws://127.0.0.1:9002"
+url="ws://10.100.80.220:9090"
 reconnect_interval=3.0
 
 [renderer_2d]

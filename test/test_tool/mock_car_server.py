@@ -14,7 +14,7 @@ import websockets
 from websockets.asyncio.server import serve
 
 HOST = "0.0.0.0"
-PORT = 9002
+PORT = 9090
 POSE_HZ = 10.0  # pose 发送频率
 
 # ─── 模拟地图数据 ────────────────────────────────────────────
