@@ -9,7 +9,7 @@ anchor_top = 0.0
 anchor_bottom = 1.0
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -220.0
+offset_left = -230.0
 grow_horizontal = 0
 script = ExtResource("1_mgr")
 
@@ -25,40 +25,43 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 10.0
-offset_top = 10.0
-offset_right = -10.0
-offset_bottom = -10.0
-theme_override_constants/separation = 8
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Panel/VBoxContainer"]
 layout_mode = 2
-text = "连接小车"
+text = "连接管理"
 horizontal_alignment = 1
 
-[node name="IPLabel" type="Label" parent="Panel/VBoxContainer"]
+[node name="Scroll" type="ScrollContainer" parent="Panel/VBoxContainer"]
 layout_mode = 2
-text = "IP 地址"
+size_flags_vertical = 3
 
-[node name="IP" type="LineEdit" parent="Panel/VBoxContainer"]
+[node name="List" type="VBoxContainer" parent="Panel/VBoxContainer/Scroll"]
 layout_mode = 2
-text = "10.100.80.220"
 
-[node name="PortLabel" type="Label" parent="Panel/VBoxContainer"]
+[node name="InputRow" type="HBoxContainer" parent="Panel/VBoxContainer"]
 layout_mode = 2
-text = "端口"
+theme_override_constants/separation = 4
 
-[node name="Port" type="SpinBox" parent="Panel/VBoxContainer"]
+[node name="IP" type="LineEdit" parent="Panel/VBoxContainer/InputRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "IP"
+
+[node name="Port" type="SpinBox" parent="Panel/VBoxContainer/InputRow"]
 layout_mode = 2
 min_value = 1.0
 max_value = 65535.0
 value = 9090.0
 
-[node name="Btn" type="Button" parent="Panel/VBoxContainer"]
+[node name="BtnConfirm" type="Button" parent="Panel/VBoxContainer/InputRow"]
 layout_mode = 2
-text = "连接"
+text = "确认"
 
-[node name="Status" type="Label" parent="Panel/VBoxContainer"]
+[node name="BtnCreate" type="Button" parent="Panel/VBoxContainer"]
 layout_mode = 2
-text = "未连接"
-horizontal_alignment = 1
+text = "创建连接"
