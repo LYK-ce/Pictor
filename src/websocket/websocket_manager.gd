@@ -19,7 +19,7 @@ func _ready() -> void:
 	_ip_input.text = "10.100.80.220"
 	_port_input.value = 9090
 	_status.text = "未连接"
-	_btn.text = "连接"
+	_btn.text = "创建连接"
 	_btn.pressed.connect(_toggle)
 
 
@@ -37,7 +37,7 @@ func _connect() -> void:
 
 	_ws_client = ws_client_scene.instantiate()
 	_ws_client.name = "WebSocketClient"
-	_ws_client.set("_url", url)  # 在 add_child 前设好，_ready() 会读取
+	_ws_client.set("_url", url)
 	get_parent().add_child(_ws_client)
 
 	_connected = true
@@ -53,6 +53,6 @@ func _disconnect() -> void:
 		_ws_client = null
 	_connected = false
 	_status.text = "未连接"
-	_btn.text = "连接"
+	_btn.text = "创建连接"
 	_ip_input.editable = true
 	_port_input.editable = true
