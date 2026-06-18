@@ -2,17 +2,15 @@ extends Node
 ## Present by KeJi
 ## Date: 2026-06-08
 ##
-## InputHandler — 键盘输入 → ctrl 消息
-## 捕获 WASD / Space，通过 EventBus 发送 ctrl 指令。
-## 使用 get_node("/root/EventBus") 而非 Autoload 全局名，
-## 保证 headless --script 测试兼容。
+## InputHandler — 键盘输入 → cmd 消息
+## 捕获 WASD / Space，通过 EventBus 发送 cmd 指令。
 
 const _KEY_MAP := {
-	KEY_W: "w",
-	KEY_S: "s",
-	KEY_A: "a",
-	KEY_D: "d",
-	KEY_SPACE: "space",
+	KEY_W: "forward",
+	KEY_S: "backward",
+	KEY_A: "spin_left",
+	KEY_D: "spin_right",
+	KEY_SPACE: "stop",
 }
 
 
@@ -27,14 +25,12 @@ func _input(event: InputEvent) -> void:
 	if not _KEY_MAP.has(key_event.keycode):
 		return
 
-	var ctrl := _make_ctrl(_KEY_MAP[key_event.keycode], key_event.pressed)
-	get_node("/root/EventBus").ctrl_send.emit(ctrl)
+	# 只响应 press，松手发 stop
+	if key_event.pressed:
+		get_node("/root/EventBus").ctrl_send.emit(_make_cmd(_KEY_MAP[key_event.keycode]))
+	else:
+		get_node("/root/EventBus").ctrl_send.emit(_make_cmd("stop"))
 
 
-## 构造 ctrl 消息（public 便于测试直接调用）
-func _make_ctrl(key: String, pressed: bool) -> Dictionary:
-	return {
-		"type": "ctrl",
-		"key": key,
-		"action": "press" if pressed else "release",
-	}
+func _make_cmd(cmd: String) -> Dictionary:
+	return {"cmd": cmd}

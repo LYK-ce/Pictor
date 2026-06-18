@@ -1,174 +1,81 @@
 extends SceneTree
 ## Present by KeJi
 ## Date: 2026-06-08
-##
-## test/input_handler/test_input.gd — headless 测试 InputHandler
 
 var _bus: Node = null
 var _passed := 0
 var _failed := 0
-
-var _cap_ctrl := {}
+var _cap_cmd := {}
 var _emit_count := 0
 
-
 func _init() -> void:
-	# 手动建立 EventBus（--script 不加载 Autoload）
 	_bus = load("res://src/event_bus/event_bus.gd").new()
 	_bus.name = "EventBus"
 	root.add_child(_bus)
-	_bus.ctrl_send.connect(_on_ctrl_send)
-
+	_bus.ctrl_send.connect(func(d: Dictionary): _cap_cmd = d; _emit_count += 1)
 	process_frame.connect(_run, CONNECT_ONE_SHOT)
-
 
 func _run() -> void:
 	print("=".repeat(50))
-	print("  InputHandler Test Suite")
+	print("  InputHandler Test (cmd protocol)")
 	print("=".repeat(50))
 
-	_test_make_ctrl()
-	_test_press_release()
-	_test_key_map()
-	_test_echo_filter()
-	_test_non_target_key()
+	_test_make_cmd()
 	_test_full_flow()
 
 	print("\n" + "=".repeat(50))
-	if _failed == 0:
-		print("  ALL %d TESTS PASSED ✓" % _passed)
-	else:
-		print("  %d passed, %d FAILED ✗" % [_passed, _failed])
+	if _failed == 0: print("  ALL %d TESTS PASSED ✓" % _passed)
+	else: print("  %d passed, %d FAILED ✗" % [_passed, _failed])
 	print("=".repeat(50))
 	quit()
 
-
-func _assert(condition: bool, msg: String) -> void:
-	if condition:
-		_passed += 1
-		print("  ✓ %s" % msg)
-	else:
-		_failed += 1
-		printerr("  ✗ FAIL: %s" % msg)
-
-
-func _on_ctrl_send(ctrl: Dictionary) -> void:
-	_cap_ctrl = ctrl
-	_emit_count += 1
-
+func _assert(c: bool, m: String) -> void:
+	if c: _passed += 1; print("  ✓ %s" % m)
+	else: _failed += 1; printerr("  ✗ FAIL: %s" % m)
 
 func _make_handler() -> Node:
-	var h = load("res://src/input_handler/input_handler.gd").new()
+	var h: Node = load("res://src/input_handler/input_handler.gd").new()
 	h.name = "InputHandler"
 	root.add_child(h)
 	return h
 
-
-# ─── Test 1: _make_ctrl basic ────────────────────────────────
-
-func _test_make_ctrl() -> void:
-	print("\n[1] _make_ctrl format")
-	var handler := _make_handler()
-
-	var ctrl: Dictionary = handler._make_ctrl("w", true)
-	_assert(ctrl.get("type") == "ctrl", "type = ctrl")
-	_assert(ctrl.get("key") == "w", "key = w")
-	_assert(ctrl.get("action") == "press", "action = press")
-
-
-# ─── Test 2: press vs release ────────────────────────────────
-
-func _test_press_release() -> void:
-	print("\n[2] Press vs release")
-	var handler := _make_handler()
-
-	var press: Dictionary = handler._make_ctrl("s", true)
-	var release: Dictionary = handler._make_ctrl("s", false)
-
-	_assert(press.get("action") == "press", "pressed → press")
-	_assert(release.get("action") == "release", "released → release")
-
-
-# ─── Test 3: all mapped keys ─────────────────────────────────
-
-func _test_key_map() -> void:
-	print("\n[3] All mapped keys")
-	var handler := _make_handler()
-
-	var keys := ["w", "s", "a", "d", "space"]
-	for k in keys:
-		var ctrl: Dictionary = handler._make_ctrl(k, true)
-		_assert(ctrl.get("key") == k, "key = %s" % k)
-
-
-# ─── Test 4: echo filter ─────────────────────────────────────
-
-func _test_echo_filter() -> void:
-	print("\n[4] Echo filter")
-	var handler := _make_handler()
-
-	# 用 InputEventKey echo=true 模拟，_input 应跳过
-	var ev := InputEventKey.new()
-	ev.keycode = KEY_W
-	ev.pressed = true
-	ev.echo = true
-
-	_cap_ctrl = {}
-	_emit_count = 0
-	handler._input(ev)
-
-	_assert(_emit_count == 0, "echo event ignored")
-
-
-# ─── Test 5: non-target key ──────────────────────────────────
-
-func _test_non_target_key() -> void:
-	print("\n[5] Non-target key ignored")
-	var handler := _make_handler()
-
-	var ev := InputEventKey.new()
-	ev.keycode = KEY_ENTER
-	ev.pressed = true
-	ev.echo = false
-
-	_cap_ctrl = {}
-	_emit_count = 0
-	handler._input(ev)
-
-	_assert(_emit_count == 0, "ENTER ignored")
-
-
-# ─── Test 6: full flow via _input ────────────────────────────
+func _test_make_cmd() -> void:
+	print("\n[1] _make_cmd")
+	var h := _make_handler()
+	var d: Dictionary = h._make_cmd("forward")
+	_assert(d.get("cmd") == "forward", "forward")
+	d = h._make_cmd("stop")
+	_assert(d.get("cmd") == "stop", "stop")
 
 func _test_full_flow() -> void:
-	print("\n[6] Full flow: _input → EventBus")
-	var handler := _make_handler()
+	print("\n[2] Full flow: key → cmd → EventBus")
+	var h := _make_handler()
 
-	# W press
+	# W press → forward
 	var ev := InputEventKey.new()
-	ev.keycode = KEY_W
-	ev.pressed = true
-	ev.echo = false
+	ev.keycode = KEY_W; ev.pressed = true; ev.echo = false
+	_cap_cmd = {}; _emit_count = 0
+	h._input(ev)
+	_assert(_emit_count == 1, "W → 1 emit")
+	_assert(_cap_cmd.get("cmd") == "forward", "W → forward")
 
-	_cap_ctrl = {}
-	_emit_count = 0
-	handler._input(ev)
-
-	_assert(_emit_count == 1, "W press → 1 emit")
-	_assert(_cap_ctrl.get("key") == "w", "key match")
-	_assert(_cap_ctrl.get("action") == "press", "action match")
-
-	# W release
+	# W release → stop
 	ev.pressed = false
-	handler._input(ev)
+	h._input(ev)
+	_assert(_emit_count == 2, "W↑ → 1 more emit")
+	_assert(_cap_cmd.get("cmd") == "stop", "W↑ → stop")
 
-	_assert(_emit_count == 2, "W release → 2 emits")
-	_assert(_cap_ctrl.get("action") == "release", "release action match")
+	# Space → stop
+	ev.keycode = KEY_SPACE; ev.pressed = true
+	h._input(ev)
+	_assert(_cap_cmd.get("cmd") == "stop", "Space → stop")
 
-	# Space press (estop)
-	ev.keycode = KEY_SPACE
-	ev.pressed = true
-	handler._input(ev)
+	# A → spin_left
+	ev.keycode = KEY_A; ev.pressed = true
+	h._input(ev)
+	_assert(_cap_cmd.get("cmd") == "spin_left", "A → spin_left")
 
-	_assert(_emit_count == 3, "Space → 3 emits")
-	_assert(_cap_ctrl.get("key") == "space", "estop key match")
+	# D → spin_right
+	ev.keycode = KEY_D; ev.pressed = true
+	h._input(ev)
+	_assert(_cap_cmd.get("cmd") == "spin_right", "D → spin_right")

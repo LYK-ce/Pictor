@@ -87,16 +87,16 @@ class CarState:
         self.x += self.vx * dt
         self.z += self.vz * dt
 
-    def handle_ctrl(self, ctrl: dict):
-        key = ctrl.get("key", "")
-        action = ctrl.get("action", "")
-        pressed = action == "press"
-        match key:
-            case "w":      self.forward = pressed
-            case "s":      self.backward = pressed
-            case "a":      self.turn_left = pressed
-            case "d":      self.turn_right = pressed
-            case "space":  self.estop = pressed
+    def handle_cmd(self, cmd: str):
+        match cmd:
+            case "forward":    self.forward = True
+            case "backward":   self.backward = True
+            case "spin_left":  self.turn_left = True
+            case "spin_right": self.turn_right = True
+            case "stop":
+                self.forward = self.backward = False
+                self.turn_left = self.turn_right = False
+                self.estop = False
 
     def to_dict(self) -> dict:
         return {
@@ -146,11 +146,11 @@ async def handler(websocket):
         async for msg in websocket:
             try:
                 data = json.loads(msg)
-                if data.get("type") == "ctrl":
-                    car.handle_ctrl(data)
-                    print(f"  ← ctrl: {data.get('key')} {data.get('action')}")
-                    if data.get("key") == "space":
-                        print("  🛑 ESTOP!")
+                if data.get("cmd"):
+                    car.handle_cmd(data["cmd"])
+                    print(f"  ← cmd: {data['cmd']}")
+                    if data["cmd"] == "stop":
+                        print("  🛑 STOP!")
             except json.JSONDecodeError:
                 print(f"  ← bad json: {msg[:50]}")
 
