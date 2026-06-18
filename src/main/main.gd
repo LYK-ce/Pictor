@@ -2,13 +2,14 @@ extends Node
 ## Present by KeJi
 ## Date: 2026-06-08
 ##
-## Main — 项目入口，负责根据配置实例化子组件并组装场景。
+## Main — 项目入口，启动时弹菜单选择渲染模式。
 
 @export var ws_scene: PackedScene
 @export var ih_scene: PackedScene
 @export var renderer_2d_scene: PackedScene
 @export var renderer_3d_scene: PackedScene
 @export var ui_scene: PackedScene
+@export var menu_scene: PackedScene
 
 
 func _ready() -> void:
@@ -16,19 +17,23 @@ func _ready() -> void:
 		add_child(ws_scene.instantiate())
 	if ih_scene:
 		add_child(ih_scene.instantiate())
-
-	var mode: String = "2d"
-	if ProjectSettings.has_setting("renderer/mode"):
-		mode = ProjectSettings.get_setting("renderer/mode")
-
-	var r_scene: PackedScene = renderer_2d_scene if mode == "2d" else renderer_3d_scene
-	if r_scene:
-		add_child(r_scene.instantiate())
-		print("[Main] Renderer mode: ", mode)
-	else:
-		print("[Main] Renderer not found for mode: ", mode, " — running control-only mode")
-
-	print("[Main] ready: ", get_child_count(), " children")
-
 	if ui_scene:
 		add_child(ui_scene.instantiate())
+
+	# 弹出菜单
+	if menu_scene:
+		var menu: CanvasLayer = menu_scene.instantiate()
+		add_child(menu)
+		menu.renderer_selected.connect(_on_renderer_selected)
+
+
+func _on_renderer_selected(mode: String) -> void:
+	match mode:
+		"2d":
+			if renderer_2d_scene:
+				add_child(renderer_2d_scene.instantiate())
+		"3d":
+			if renderer_3d_scene:
+				add_child(renderer_3d_scene.instantiate())
+	print("[Main] Renderer mode: ", mode)
+	print("[Main] ready: ", get_child_count(), " children")

@@ -7,10 +7,12 @@ Pictor 是 Pleiades 系统的 Godot 可视化与控制终端。通过 WebSocket 
 ## 场景结构
 
 ```
-Main (Node)
-├── WebSocketClient
-├── InputHandler
-└── Renderer (2D 或 3D)
+Main (Node, main.gd)
+├── WebSocketClient  (@export)
+├── InputHandler     (@export)
+├── Renderer (2D/3D) (@export)
+└── UI (CanvasLayer)  (@export)
+    └── ZoomSlider
 ```
 
 **所有组件只与 EventBus 通信，彼此零引用。**
@@ -105,9 +107,17 @@ renderer/mode = "3d"  →  add_child(Renderer3D)
 
 ### PC → 小车（下行）
 
-| type | 内容 |
+```json
+{"cmd": "forward"}
+```
+
+| cmd | 说明 |
 |------|------|
-| `ctrl` | 键盘：`w`/`s` 前后，`a`/`d` 原地旋转，`space` 急停（坦克式操纵） |
+| `forward` | 前进 |
+| `backward` | 后退 |
+| `spin_left` | 左旋 |
+| `spin_right` | 右旋 |
+| `stop` | 停止（松手自动发送） |
 
 ## 组件职责
 
@@ -120,12 +130,25 @@ renderer/mode = "3d"  →  add_child(Renderer3D)
 | `pose_received(dict)` | 车辆位姿 | WebSocket → Renderer |
 | `voxel_received(array, is_full)` | 体素列表 | WebSocket → Renderer |
 | `path_received(array)` | 路径点 | WebSocket → Renderer |
-| `ctrl_send(dict)` | 控制指令 | InputHandler → WebSocket |
+| `ctrl_send(dict)` | `{"cmd":"..."}` | InputHandler → WebSocket |
+| `zoom_changed(float)` | 缩放值 | ZoomSlider ↔ Renderer |
 
 ### InputHandler
-- 捕获键盘事件（`_input`）
-- WASD 转换为 `ctrl` JSON
+- 捕获键盘（`_input`）
+- WASD/Space → `{"cmd":"forward"/"backward"/"spin_left"/"spin_right"/"stop"}`
+- 按下发 cmd，松手发 `{"cmd":"stop"}`
 - `EventBus.ctrl_send.emit(msg)`
+
+### UI (CanvasLayer)
+- UI 父容器，挂载所有界面子组件
+- 当前子组件：ZoomSlider
+- 后续扩展：虚拟摇杆、状态面板等
+
+### ZoomSlider
+- 右上角 VSlider，范围 0.5~4.0
+- 拖动 → `EventBus.zoom_changed.emit(v)`
+- 订阅 `zoom_changed` 同步滑块位置
+- Renderer2D 收到 → `Camera2D.zoom` 更新
 
 ### WebSocketClient
 - 连接管理 + 自动重连
