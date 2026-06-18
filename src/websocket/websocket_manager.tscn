@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/websocket/websocket_manager.gd" id="1_mgr"]
+[ext_resource type="PackedScene" uid="" path="res://src/websocket_client/websocket_client.tscn" id="2_ws"]
 
 [node name="WebSocketManager" type="Control"]
 layout_mode = 3
@@ -12,6 +13,7 @@ anchor_right = 1.0
 offset_left = -230.0
 grow_horizontal = 0
 script = ExtResource("1_mgr")
+ws_client_scene = ExtResource("2_ws")
 
 [node name="Panel" type="Panel" parent="."]
 layout_mode = 1
