@@ -4,17 +4,17 @@ extends Node
 ##
 ## Main — 项目入口，启动时弹菜单选择渲染模式。
 
-@export var ws_scene: PackedScene
 @export var ih_scene: PackedScene
 @export var renderer_2d_scene: PackedScene
 @export var renderer_3d_scene: PackedScene
 @export var ui_scene: PackedScene
 @export var menu_scene: PackedScene
+@export var ws_manager_scene: PackedScene
 
 
 func _ready() -> void:
-	if ws_scene:
-		add_child(ws_scene.instantiate())
+	if ws_manager_scene:
+		add_child(ws_manager_scene.instantiate())
 	if ih_scene:
 		add_child(ih_scene.instantiate())
 	if ui_scene:
