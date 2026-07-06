@@ -11,14 +11,11 @@ extends Node2D
 
 
 func _ready() -> void:
-	var bus := get_node("/root/EventBus")
-	bus.pose_received.connect(_on_pose)
-	bus.voxel_received.connect(_on_voxel)
-	bus.path_received.connect(_on_path)
-	bus.zoom_changed.connect(_on_zoom)
-
-	# 发出初始 zoom 值，同步 ZoomSlider
-	bus.zoom_changed.emit(1.0)
+	EventBus.pose_received.connect(_on_pose)
+	EventBus.voxel_received.connect(_on_voxel)
+	EventBus.path_received.connect(_on_path)
+	EventBus.zoom_changed.connect(_on_zoom)
+	EventBus.zoom_changed.emit(1.0)
 
 
 func _on_zoom(zoom: float) -> void:

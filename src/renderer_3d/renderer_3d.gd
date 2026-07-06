@@ -10,10 +10,9 @@ extends Node3D
 
 
 func _ready() -> void:
-	var bus := get_node("/root/EventBus")
-	bus.pose_received.connect(_on_pose)
-	bus.voxel_received.connect(_on_voxel)
-	bus.path_received.connect(_on_path)
+	EventBus.pose_received.connect(_on_pose)
+	EventBus.voxel_received.connect(_on_voxel)
+	EventBus.path_received.connect(_on_path)
 
 
 func _on_pose(pose: Dictionary) -> void:

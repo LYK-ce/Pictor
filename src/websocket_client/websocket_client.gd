@@ -27,8 +27,7 @@ func _ready() -> void:
 		_reconnect_interval = ProjectSettings.get_setting("websocket/reconnect_interval")
 
 	# 订阅 EventBus 下行消息
-	var bus := get_node("/root/EventBus")
-	bus.ctrl_send.connect(_on_ctrl_send)
+	EventBus.ctrl_send.connect(_on_ctrl_send)
 
 	# 发起首次连接
 	_connect()
@@ -102,19 +101,18 @@ func _on_message(text: String) -> void:
 	if not data is Dictionary:
 		return
 
-	var bus := get_node("/root/EventBus")
 	match data.get("type"):
 		"pose":
-			bus.pose_received.emit(data)
+			EventBus.pose_received.emit(data)
 		"voxel_full":
 			var voxels = data.get("voxels", [])
-			bus.voxel_received.emit(voxels, true)
+			EventBus.voxel_received.emit(voxels, true)
 		"voxel_delta":
 			var voxels = data.get("voxels", [])
-			bus.voxel_received.emit(voxels, false)
+			EventBus.voxel_received.emit(voxels, false)
 		"path":
 			var points = data.get("points", [])
-			bus.path_received.emit(points)
+			EventBus.path_received.emit(points)
 
 
 ## EventBus ctrl_send → 发送到小车

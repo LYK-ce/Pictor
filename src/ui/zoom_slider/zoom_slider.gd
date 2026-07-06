@@ -17,14 +17,12 @@ func _ready() -> void:
 
 	_label.text = "Zoom: 1.0x"
 
-	var bus := get_node("/root/EventBus")
-	bus.zoom_changed.connect(_on_zoom_changed)
+	EventBus.zoom_changed.connect(_on_zoom_changed)
 
 
 func _on_value_changed(v: float) -> void:
 	_label.text = "Zoom: %.1fx" % v
-	var bus := get_node("/root/EventBus")
-	bus.zoom_changed.emit(v)
+	EventBus.zoom_changed.emit(v)
 
 
 func _on_zoom_changed(zoom: float) -> void:

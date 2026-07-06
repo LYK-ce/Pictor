@@ -27,9 +27,9 @@ func _input(event: InputEvent) -> void:
 
 	# 只响应 press，松手发 stop
 	if key_event.pressed:
-		get_node("/root/EventBus").ctrl_send.emit(_make_cmd(_KEY_MAP[key_event.keycode]))
+		EventBus.ctrl_send.emit(_make_cmd(_KEY_MAP[key_event.keycode]))
 	else:
-		get_node("/root/EventBus").ctrl_send.emit(_make_cmd("stop"))
+		EventBus.ctrl_send.emit(_make_cmd("stop"))
 
 
 func _make_cmd(cmd: String) -> Dictionary:
