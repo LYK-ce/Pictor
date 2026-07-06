@@ -10,3 +10,4 @@ signal voxel_received(voxels: Array, is_full: bool)
 signal path_received(points: Array)
 signal ctrl_send(ctrl: Dictionary)
 signal zoom_changed(zoom: float)
+signal ws_connected

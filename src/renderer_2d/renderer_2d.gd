@@ -20,19 +20,18 @@ func _ready() -> void:
 	EventBus.voxel_received.connect(_on_voxel)
 	EventBus.path_received.connect(_on_path)
 	EventBus.zoom_changed.connect(_on_zoom)
+	EventBus.ws_connected.connect(_on_ws_connected)
 	EventBus.zoom_changed.emit(1.0)
 
-	# 创建相机，挂在车辆容器上
 	_camera = Camera2D.new()
 	_camera.enabled = true
 	_vehicle_container.add_child(_camera)
 
 
-func _ensure_vehicle() -> Node2D:
-	if not _vehicle_instance and vehicle_scene:
+func _on_ws_connected() -> void:
+	if vehicle_scene and not _vehicle_instance:
 		_vehicle_instance = vehicle_scene.instantiate()
 		_vehicle_container.add_child(_vehicle_instance)
-	return _vehicle_instance
 
 
 func _on_zoom(zoom: float) -> void:
@@ -40,14 +39,13 @@ func _on_zoom(zoom: float) -> void:
 
 
 func _on_pose(pose: Dictionary) -> void:
-	var v := _ensure_vehicle()
-	if not v:
+	if not _vehicle_instance:
 		return
 	var x: float = pose.get("x", 0.0)
 	var z: float = pose.get("z", 0.0)
 	var yaw: float = pose.get("yaw", 0.0)
-	v.position = CoordUtils.real_to_game(x, z)
-	v.rotation = yaw
+	_vehicle_instance.position = CoordUtils.real_to_game(x, z)
+	_vehicle_instance.rotation = yaw
 
 
 func _on_voxel(voxels: Array, is_full: bool) -> void:
