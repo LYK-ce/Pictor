@@ -2,29 +2,16 @@ extends Node
 ## Present by KeJi
 ## Date: 2026-06-08
 ##
-## Main — 项目入口，启动时弹菜单选择渲染模式。
+## Main — 项目入口。固定组件直接挂在 tscn 中，只动态选 Renderer。
 
-@export var ih_scene: PackedScene
 @export var renderer_2d_scene: PackedScene
 @export var renderer_3d_scene: PackedScene
-@export var ui_scene: PackedScene
-@export var menu_scene: PackedScene
-@export var ws_manager_scene: PackedScene
 
 
 func _ready() -> void:
-	if ws_manager_scene:
-		add_child(ws_manager_scene.instantiate())
-	if ih_scene:
-		add_child(ih_scene.instantiate())
-	if ui_scene:
-		add_child(ui_scene.instantiate())
-
-	# 弹出菜单
-	if menu_scene:
-		var menu: CanvasLayer = menu_scene.instantiate()
-		add_child(menu)
-		menu.renderer_selected.connect(_on_renderer_selected)
+	# 菜单选完再挂 Renderer
+	var menu: CanvasLayer = $Menu
+	menu.renderer_selected.connect(_on_renderer_selected)
 
 
 func _on_renderer_selected(mode: String) -> void:
