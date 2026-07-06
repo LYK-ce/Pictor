@@ -1,27 +1,36 @@
-; Pictor - Voxel Map Visualization
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
 config_version=5
 
 [application]
+
 config/name="Pictor"
-config/features=PackedStringArray("4.6", "Forward Plus")
-
-[rendering]
-renderer/rendering_method="forward_plus"
-
-[display]
-window/size/viewport_width=1920
-window/size/viewport_height=1080
-
-[renderer]
-mode="2d"
+config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
 
 EventBus="*res://src/event_bus/event_bus.gd"
 
-[websocket]
-url="ws://10.100.80.220:9090"
-reconnect_interval=3.0
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+
+[renderer]
+
+mode="2d"
 
 [renderer_2d]
+
 cell_size=1.0
+
+[websocket]
+
+url="ws://10.100.80.220:9090"
+reconnect_interval=3.0
