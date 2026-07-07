@@ -16,16 +16,16 @@ var _camera: Camera2D = null
 
 
 func _ready() -> void:
+	_camera = Camera2D.new()
+	_camera.enabled = true
+	_vehicle_container.add_child(_camera)
+
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.voxel_received.connect(_on_voxel)
 	EventBus.path_received.connect(_on_path)
 	EventBus.zoom_changed.connect(_on_zoom)
 	EventBus.ws_connected.connect(_on_ws_connected)
 	EventBus.zoom_changed.emit(1.0)
-
-	_camera = Camera2D.new()
-	_camera.enabled = true
-	_vehicle_container.add_child(_camera)
 
 
 func _on_ws_connected() -> void:
