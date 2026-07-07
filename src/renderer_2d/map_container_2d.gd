@@ -1,55 +1,19 @@
 extends Node2D
 ## Present by KeJi
-## Date: 2026-06-08
+## Date: 2026-07-07
 ##
-## MapContainer2D — 体素地图存储与 TileMapLayer 渲染
+## MapContainer2D — 体素地图存储与双 TileMapLayer 渲染
+## 底层 GroundLayer (全铺 ground)，顶层 WallLayer (障碍物 autotile)
 
-const CELL_SIZE := 1.0   # m per grid cell
-const TILE_SIZE := Vector2i(16, 16)
+const CELL_SIZE := 1.0  # m per grid cell
+const TERRAIN_SET := 0
+const TERRAIN_WALL := 0
+const TERRAIN_GROUND := 1
 
-# state → TileSet atlas coords (column, 0)
-const TILE_COORDS := {
-	0: Vector2i(0, 0),  # unknown → gray
-	1: Vector2i(1, 0),  # free → black
-	2: Vector2i(2, 0),  # occupied → white
-}
+@onready var _ground_layer := $GroundLayer as TileMapLayer
+@onready var _wall_layer := $WallLayer as TileMapLayer
 
-const STATE_COLORS := {
-	0: Color(0.25, 0.25, 0.25),  # gray
-	1: Color(0.0, 0.0, 0.0),     # black
-	2: Color(1.0, 1.0, 1.0),     # white
-}
-
-@onready var _tile_layer := $TileMapLayer as TileMapLayer
-var _atlas_id := 0
-
-var _map: Dictionary = {}   # _map[gx][gz] = {"state","conf","ts","source"}
-
-
-func _ready() -> void:
-	_setup_tileset()
-
-
-func _setup_tileset() -> void:
-	var ts := TileSet.new()
-	var source := TileSetAtlasSource.new()
-	source.texture_region_size = TILE_SIZE
-
-	# 创建一张 3×1 tile 的纹理
-	var img := Image.create(TILE_SIZE.x * 3, TILE_SIZE.y, false, Image.FORMAT_RGBA8)
-	for s in [0, 1, 2]:
-		var sub := Image.create(TILE_SIZE.x, TILE_SIZE.y, false, Image.FORMAT_RGBA8)
-		sub.fill(STATE_COLORS[s])
-		img.blit_rect(sub, Rect2i(0, 0, TILE_SIZE.x, TILE_SIZE.y), Vector2i(s * TILE_SIZE.x, 0))
-
-	var tex := ImageTexture.create_from_image(img)
-	_atlas_id = ts.add_source(source)
-	source.texture = tex
-	source.create_tile(TILE_COORDS[0])
-	source.create_tile(TILE_COORDS[1])
-	source.create_tile(TILE_COORDS[2])
-
-	_tile_layer.tile_set = ts
+var _map: Dictionary = {}  # _map[gx][gz] = {"state","conf","ts","source"}
 
 
 # ─── 坐标转换 ─────────────────────────────────────────────────
@@ -65,34 +29,60 @@ func set_cell(gx: int, gz: int, data: Dictionary) -> void:
 		_map[gx] = {}
 	_map[gx][gz] = data
 
-	# 同步更新 TileMapLayer
 	var state: int = data.get("state", 0)
-	var conf: float = data.get("conf", 1.0)
-	_tile_layer.set_cell(Vector2i(gx, gz), _atlas_id, TILE_COORDS[state])
-	# 通过 modulate 设置透明度（TileMapLayer 不支持 per-cell modulate）
-	# 暂时全量渲染，置信度渲染后续优化
+	if state == 2:
+		_wall_layer.set_cells_terrain_connect([Vector2i(gx, gz)], TERRAIN_SET, TERRAIN_WALL, true)
 
 
 func set_full(voxels: Array) -> void:
 	_map.clear()
-	_tile_layer.clear()
+	_wall_layer.clear()
+
+	var ground_cells: Array[Vector2i] = []
+	var wall_cells: Array[Vector2i] = []
+
 	for v in voxels:
-		set_cell(v.get("gx", 0), v.get("gz", 0), {
-			"state": v.get("state", 0),
+		var gx: int = v.get("gx", 0)
+		var gz: int = v.get("gz", 0)
+		var state: int = v.get("state", 0)
+
+		if not _map.has(gx):
+			_map[gx] = {}
+		_map[gx][gz] = {
+			"state": state,
 			"conf": v.get("conf", 1.0),
 			"ts": v.get("ts", 0.0),
 			"source": v.get("source", ""),
-		})
+		}
+
+		ground_cells.append(Vector2i(gx, gz))
+		if state == 2:
+			wall_cells.append(Vector2i(gx, gz))
+
+	if not ground_cells.is_empty():
+		_ground_layer.set_cells_terrain_connect(ground_cells, TERRAIN_SET, TERRAIN_GROUND, true)
+	if not wall_cells.is_empty():
+		_wall_layer.set_cells_terrain_connect(wall_cells, TERRAIN_SET, TERRAIN_WALL, true)
 
 
 func set_delta(voxels: Array) -> void:
 	for v in voxels:
-		set_cell(v.get("gx", 0), v.get("gz", 0), {
-			"state": v.get("state", 0),
+		var gx: int = v.get("gx", 0)
+		var gz: int = v.get("gz", 0)
+		var state: int = v.get("state", 0)
+
+		if not _map.has(gx):
+			_map[gx] = {}
+		_map[gx][gz] = {
+			"state": state,
 			"conf": v.get("conf", 1.0),
 			"ts": v.get("ts", 0.0),
 			"source": v.get("source", ""),
-		})
+		}
+
+		_ground_layer.set_cells_terrain_connect([Vector2i(gx, gz)], TERRAIN_SET, TERRAIN_GROUND, true)
+		if state == 2:
+			_wall_layer.set_cells_terrain_connect([Vector2i(gx, gz)], TERRAIN_SET, TERRAIN_WALL, true)
 
 
 func get_cell(gx: int, gz: int) -> Dictionary:

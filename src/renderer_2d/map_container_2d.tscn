@@ -1,8 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/renderer_2d/map_container_2d.gd" id="1_map"]
+[ext_resource type="TileSet" uid="uid://wga6d1vokbtg" path="res://Assets/2D/tile_set.tres" id="2_ts"]
 
 [node name="MapContainer2D" type="Node2D"]
 script = ExtResource("1_map")
 
-[node name="TileMapLayer" type="TileMapLayer" parent="."]
+[node name="GroundLayer" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_ts")
+
+[node name="WallLayer" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_ts")
