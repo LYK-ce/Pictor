@@ -1,2 +1,0 @@
-cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && which godot 2>/dev/null || find /usr -name "godot*"  -type f 2>/dev/null | head -5
-/usr/local/bin/godot
