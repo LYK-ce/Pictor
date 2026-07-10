@@ -1,8 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://ccxwr045jon3h"]
 
-[ext_resource type="Script" path="res://src/main/main.gd" id="1_main"]
-[ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
+[ext_resource type="Script" uid="uid://dbtw7ka04tcgy" path="res://src/main/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
 
-[node name="Main" type="Node"]
+[node name="Main" type="Node" unique_id=2001035060]
 script = ExtResource("1_main")
 renderer_2d_scene = ExtResource("2_r2d")
