@@ -1,9 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/renderer_2d/renderer_2d.gd" id="1_r2d"]
 [ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/map_container_2d.tscn" id="2_map"]
 [ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/Vehicle/vehicle_2d.tscn" id="3_vh"]
-[ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/path_line_2d.tscn" id="4_pl"]
 
 [node name="Renderer2D" type="Node2D"]
 script = ExtResource("1_r2d")
@@ -12,5 +11,3 @@ vehicle_scene = ExtResource("3_vh")
 [node name="MapContainer2D" parent="." instance=ExtResource("2_map")]
 
 [node name="VehicleContainer" type="Node2D" parent="."]
-
-[node name="PathLine2D" parent="." instance=ExtResource("4_pl")]

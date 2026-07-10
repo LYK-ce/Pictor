@@ -10,10 +10,23 @@ const TERRAIN_SET := 0
 const TERRAIN_WALL := 0
 const TERRAIN_GROUND := 1
 
+const RANGE_HALF := 100
+
 @onready var _ground_layer := $GroundLayer as TileMapLayer
 @onready var _wall_layer := $WallLayer as TileMapLayer
 
-var _map: Dictionary = {}  # _map[gx][gz] = {"state","conf","ts","source"}
+var _map: Dictionary = {}
+
+
+func _ready() -> void:
+	var cells: Array[Vector2i] = []
+	for gx in range(-RANGE_HALF, RANGE_HALF + 1):
+		if not _map.has(gx):
+			_map[gx] = {}
+		for gz in range(-RANGE_HALF, RANGE_HALF + 1):
+			_map[gx][gz] = {"state": 0, "conf": 0.0, "ts": 0, "source": ""}
+			cells.append(Vector2i(gx, gz))
+	_ground_layer.set_cells_terrain_connect(cells, TERRAIN_SET, TERRAIN_GROUND, true)
 
 
 # ─── 坐标转换 ─────────────────────────────────────────────────

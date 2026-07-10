@@ -3,13 +3,12 @@ extends Node2D
 ## Date: 2026-06-08
 ##
 ## Renderer2D — 2D 俯视渲染器
-## 组装 MapContainer2D / Vehicle / PathLine2D，订阅 EventBus 信号分发。
+## 组装 MapContainer2D / Vehicle，订阅 EventBus 信号分发。
 
 @export var vehicle_scene: PackedScene
 
 @onready var _map: Node2D = $MapContainer2D
 @onready var _vehicle_container: Node2D = $VehicleContainer
-@onready var _path: Node2D = $PathLine2D
 
 var _vehicle_instance: Node2D = null
 var _camera: Camera2D = null
@@ -22,7 +21,6 @@ func _ready() -> void:
 
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.voxel_received.connect(_on_voxel)
-	EventBus.path_received.connect(_on_path)
 	EventBus.zoom_changed.connect(_on_zoom)
 	EventBus.ws_connected.connect(_on_ws_connected)
 	EventBus.zoom_changed.emit(1.0)
@@ -53,7 +51,3 @@ func _on_voxel(voxels: Array, is_full: bool) -> void:
 		_map.set_full(voxels)
 	else:
 		_map.set_delta(voxels)
-
-
-func _on_path(points: Array) -> void:
-	_path.set_points(points)

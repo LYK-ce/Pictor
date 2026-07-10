@@ -1,0 +1,61 @@
+cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && which godot 2>/dev/null || find /usr -name "godot*"  -type f 2>/dev/null | head -5
+/usr/local/bin/godot
+[?2004h[32m>[0m cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && godot --version 2>&1
+[?2004l4.6.3.stable.custom_build.35e80b3a8
+[?2004h[32m>[0m cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && godot --headless --script test/main/test_main.gd 2>&&1
+[?2004lGodot Engine v4.6.3.stable.custom_build.35e80b3a8 (2026-05-20 13:47:53 UTC) - https://godotengine.org
+[1;33mWARNING:[0;93m Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+[0;90m     at: setup2 (main/main.cpp:3478)[0m
+
+==================================================
+  Main Scene Integration Test
+==================================================
+[1;33mWARNING:[0;93m res://src/renderer_2d/renderer_2d.tscn:5 - ext_resource, invalid UID:  - using text path instead: res://src/renderer_2d/Vehicle/vehicle_2d.tscn
+[0;90m     at: load (scene/resources/resource_format_text.cpp:500)[0m
+[0;90m     GDScript backtrace (most recent call first):
+         [0] _run (res://test/main/test_main.gd:37)[0m
+  ✗ FAIL: WebSocketClient instantiated
+  ✓ InputHandler instantiated
+  children: 4
+  ✗ FAIL: voxel_full received: 0 cells
+  ✗ FAIL: path received: 0 points
+  ✗ FAIL: pose received: 0 msgs
+  ✗ FAIL: ctrl sent via EventBus
+
+==================================================
+  1 passed, 5 FAILED ✗
+==================================================
+[?2004h[32m>[0m cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && git remote -v && git status && git branch
+[?2004lorigin	git@github.com:LYK-ce/Pictor.git (fetch)
+origin	git@github.com:LYK-ce/Pictor.git (push)
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	[31mmodified:   src/main/main.tscn[m
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	[31m.zgent/[m
+	[31mWorkbook/wb_9_refroge.md[m
+
+no changes added to commit (use "git add" and/or "git commit -a")
+* [32mmain[m
+[?2004h[32m>[0m cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && git add src/main/main.tscn Workbook/wb_9_refroge.md  && git commit -m "clean main.tscn child nodes; add wb_9" && git push origin main 2>&1
+[?2004l[main 40fa19d] clean main.tscn child nodes; add wb_9
+ 2 files changed, 11 insertions(+), 17 deletions(-)
+ create mode 100644 Workbook/wb_9_refroge.md
+Enter passphrase for key '/root/.ssh/id_ed25519': 
+Enumerating objects: 12, done.
+Counting objects:   8% (1/12)Counting objects:  16% (2/12)Counting objects:  25% (3/12)Counting objects:  33% (4/12)Counting objects:  41% (5/12)Counting objects:  50% (6/12)Counting objects:  58% (7/12)Counting objects:  66% (8/12)Counting objects:  75% (9/12)Counting objects:  83% (10/12)Counting objects:  91% (11/12)Counting objects: 100% (12/12)Counting objects: 100% (12/12), done.
+Delta compression using up to 53 threads
+Compressing objects:  14% (1/7)Compressing objects:  28% (2/7)Compressing objects:  42% (3/7)Compressing objects:  57% (4/7)Compressing objects:  71% (5/7)Compressing objects:  85% (6/7)Compressing objects: 100% (7/7)Compressing objects: 100% (7/7), done.
+Writing objects:  14% (1/7)Writing objects:  28% (2/7)Writing objects:  42% (3/7)Writing objects:  57% (4/7)Writing objects:  71% (5/7)Writing objects:  85% (6/7)Writing objects: 100% (7/7)Writing objects: 100% (7/7), 727 bytes | 727.00 KiB/s, done.
+Total 7 (delta 4), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas:   0% (0/4)[Kremote: Resolving deltas:  25% (1/4)[Kremote: Resolving deltas:  50% (2/4)[Kremote: Resolving deltas:  75% (3/4)[Kremote: Resolving deltas: 100% (4/4)[Kremote: Resolving deltas: 100% (4/4), completed with 4 local objects.[K
+To github.com:LYK-ce/Pictor.git
+   0f103ef..40fa19d  main -> main
+[?2004h[32m>[0m cd /vepfs-mlp2/c20250205/240804016/GodotProject/Pictor && git add -A && git commit -m "refactor renderer2d: reemove path_line, add ground fill [-100,100], simplify main" && git push origin main 2>&1
