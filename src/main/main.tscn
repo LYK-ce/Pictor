@@ -1,22 +1,6 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main"]
-[ext_resource type="PackedScene" uid="" path="res://src/input_handler/input_handler.tscn" id="2_ih"]
-[ext_resource type="PackedScene" uid="" path="res://src/ui/ui.tscn" id="3_ui"]
-[ext_resource type="PackedScene" uid="" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
-[ext_resource type="PackedScene" uid="" path="res://src/main/menu.tscn" id="5_menu"]
-[ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/renderer_2d.tscn" id="6_r2d"]
-[ext_resource type="PackedScene" uid="" path="res://src/renderer_3d/renderer_3d.tscn" id="7_r3d"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_main")
-renderer_2d_scene = ExtResource("6_r2d")
-renderer_3d_scene = ExtResource("7_r3d")
-
-[node name="InputHandler" parent="." instance=ExtResource("2_ih")]
-
-[node name="UI" parent="." instance=ExtResource("3_ui")]
-
-[node name="WebSocketManager" parent="." instance=ExtResource("4_ws")]
-
-[node name="Menu" parent="." instance=ExtResource("5_menu")]
