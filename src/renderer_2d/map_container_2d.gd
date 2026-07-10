@@ -11,7 +11,7 @@ const TERRAIN_WALL := 0
 const TERRAIN_GROUND := 1
 
 const RANGE_HALF := 100
-const WALL_COUNT := 200
+const WALL_COUNT := 5000
 
 @onready var _ground_layer := $GroundLayer as TileMapLayer
 @onready var _wall_layer := $WallLayer as TileMapLayer
