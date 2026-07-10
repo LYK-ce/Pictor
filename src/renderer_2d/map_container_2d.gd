@@ -12,6 +12,8 @@ const TERRAIN_GROUND := 1
 
 const RANGE_HALF := 100
 const WALL_COUNT := 200
+const WALL_SOURCE := 8
+const WALL_ATLAS := Vector2i(9, 4)
 
 @onready var _ground_layer := $GroundLayer as TileMapLayer
 @onready var _wall_layer := $WallLayer as TileMapLayer
@@ -30,15 +32,12 @@ func _ready() -> void:
 	_ground_layer.set_cells_terrain_connect(cells, TERRAIN_SET, TERRAIN_GROUND, true)
 
 	# 随机生成墙壁
-	var wall_cells: Array[Vector2i] = []
 	for _i in range(WALL_COUNT):
 		var gx: int = randi_range(-RANGE_HALF, RANGE_HALF)
 		var gz: int = randi_range(-RANGE_HALF, RANGE_HALF)
 		if _map[gx][gz]["state"] != 2:
 			_map[gx][gz]["state"] = 2
-			wall_cells.append(Vector2i(gx, gz))
-	if not wall_cells.is_empty():
-		_wall_layer.set_cells_terrain_connect(wall_cells, TERRAIN_SET, TERRAIN_WALL, true)
+			_wall_layer.set_cell(Vector2i(gx, gz), WALL_SOURCE, WALL_ATLAS)
 
 
 # ─── 坐标转换 ─────────────────────────────────────────────────
