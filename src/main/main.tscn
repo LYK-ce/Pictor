@@ -7,4 +7,7 @@
 [node name="Main" type="Node"]
 script = ExtResource("1_main")
 renderer_2d_scene = ExtResource("2_r2d")
-map_data_2d_scene = ExtResource("3_md")
+
+[node name="MapData2D" parent="." instance=ExtResource("3_md")]
+
+[node name="Renderer2D" parent="." instance=ExtResource("2_r2d")]
