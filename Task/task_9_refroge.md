@@ -85,6 +85,24 @@ signal chunk_updated(chunk_x: int, chunk_y: int)
 - 更新后自动 `ResourceSaver.save()` 持久化
 - `chunk_updated` 通知渲染层重绘
 
+### EventBus 信号变更
+
+新增：
+
+```gdscript
+signal chunk_updated(chunk_x: int, chunk_y: int)
+```
+
+流向：`MapData2D → EventBus.chunk_updated → MapContainer2D`
+
+现有信号适配：
+
+| 信号 | 变更 |
+|------|------|
+| `voxel_received` | 订阅者改为 MapData2D（原为 Renderer2D） |
+| `path_received` | 删除（PathLine2D 已移除，无订阅者） |
+| `pose_received`, `ctrl_send`, `zoom_changed`, `ws_connected` | 不变 |
+
 ## 状态
 
 - [x] 进行中
