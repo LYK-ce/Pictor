@@ -71,7 +71,7 @@ var cells: PackedByteArray  # 65536 bytes
 # 全量覆盖某个 Chunk
 func set_chunk_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void
 
-# 增量更新某个 Chunk（cells 中 0/1 有效位，非 0/1 跳过）
+# 增量更新某个 Chunk
 func set_chunk_delta(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void
 
 # 查询单格
@@ -80,6 +80,9 @@ func get_cell(gx: int, gz: int) -> int
 # 信号
 signal chunk_updated(chunk_x: int, chunk_y: int)
 ```
+
+- MapData2D 挂在 Main 下，设置 `unique_name_in_owner = true`
+- 全场景通过 `%MapData2D` 唯一访问，不依赖路径
 
 - `set_full` / `set_delta` 收到全局体素 → 按坐标分组 → 调用对应 Chunk 的 `set_chunk_full/delta`
 - 更新后自动 `ResourceSaver.save()` 持久化
