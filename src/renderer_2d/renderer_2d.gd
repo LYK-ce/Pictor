@@ -47,6 +47,6 @@ func _on_pose(pose: Dictionary) -> void:
 
 
 func _on_chunk_updated(chunk_x: int, chunk_y: int) -> void:
-	var cells := %MapData2D.get_chunk_cells(chunk_x, chunk_y)
+	var cells: PackedByteArray = %MapData2D.get_chunk_cells(chunk_x, chunk_y)
 	if not cells.is_empty():
 		_map.render_chunk(chunk_x, chunk_y, cells)
