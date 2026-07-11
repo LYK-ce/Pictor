@@ -14,29 +14,24 @@
 
 ## 待完成
 
-### 架构调整：Renderer2D 拆分数据层 + 渲染层
-
-目标结构：
+### 架构调整：MapData2D 独立于 Renderer2D
 
 ```
-Renderer2D
-├── MapData2D (Node)              ← 独立数据节点，纯数据层
+Main
+├── MapData2D (Node)              ← 独立数据节点，与 Renderer 平级
 │   ├── Chunk 分块存储（Array）
 │   ├── set_full / set_delta
 │   └── signal: chunk_updated
-├── MapContainer2D (Node2D)       ← 纯渲染层，不持有地图数据
-│   ├── GroundLayer / WallLayer
-│   └── 订阅 MapData2D.chunk_updated → 局部重绘
-└── VehicleContainer (Node2D)
+└── Renderer2D (Node2D)           ← 纯渲染，不持有地图数据
+    ├── MapContainer2D            ← 订阅 MapData2D.chunk_updated
+    │   ├── GroundLayer
+    │   └── WallLayer
+    └── VehicleContainer
 ```
 
-- [ ] 创建 `src/renderer_2d/map_data_2d.gd` + `map_data_2d.tscn`
-  - Chunk 固定大小（如 16×16），Array 存储
-  - SparseChunkMap: Dictionary{chunk_coord → Chunk}，按需分配
-  - `set_delta` 只更新受影响的 Chunk
-  - signal `chunk_updated(chunk_coord)`
-- [ ] `MapContainer2D` 剥离数据存储，改为接收 `chunk_updated` 信号驱动渲染
-- [ ] 后续 `MapData3D` 同理
+- MapData2D 挂在 Main 下，与 Renderer2D 平级
+- 可独立单元测试，外部组件可直接查询
+- 后续 MapData3D 同理
 
 ## 状态
 
