@@ -7,4 +7,11 @@
 
 ## t9_debug_2d_render
 - start: 2026-07-10
-- issue: 2D 渲染启动后不正确
+- end: 2026-07-10
+- status: done
+- result: main 精简, ground fill, random walls, autotile fix
+
+## t9_chunk_map
+- start: 2026-07-10
+- status: planned
+- goal: Dictionary → Chunk 分块存储
