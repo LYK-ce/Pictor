@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/renderer_2d/map_data_2d.gd" id="1_md"]
+
+[node name="MapData2D" type="Node"]
+unique_name_in_owner = true
+script = ExtResource("1_md")

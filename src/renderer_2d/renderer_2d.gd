@@ -20,7 +20,7 @@ func _ready() -> void:
 	_vehicle_container.add_child(_camera)
 
 	EventBus.pose_received.connect(_on_pose)
-	EventBus.voxel_received.connect(_on_voxel)
+	EventBus.chunk_updated.connect(_on_chunk_updated)
 	EventBus.zoom_changed.connect(_on_zoom)
 	EventBus.ws_connected.connect(_on_ws_connected)
 	EventBus.zoom_changed.emit(1.0)
@@ -46,8 +46,7 @@ func _on_pose(pose: Dictionary) -> void:
 	_vehicle_instance.rotation = yaw
 
 
-func _on_voxel(voxels: Array, is_full: bool) -> void:
-	if is_full:
-		_map.set_full(voxels)
-	else:
-		_map.set_delta(voxels)
+func _on_chunk_updated(chunk_x: int, chunk_y: int) -> void:
+	var cells := %MapData2D.get_chunk_cells(chunk_x, chunk_y)
+	if not cells.is_empty():
+		_map.render_chunk(chunk_x, chunk_y, cells)

@@ -7,7 +7,7 @@ extends Node
 
 signal pose_received(pose: Dictionary)
 signal voxel_received(voxels: Array, is_full: bool)
-signal path_received(points: Array)
+signal chunk_updated(chunk_x: int, chunk_y: int)
 signal ctrl_send(ctrl: Dictionary)
 signal zoom_changed(zoom: float)
 signal ws_connected
