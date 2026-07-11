@@ -53,6 +53,38 @@ map_chunk_-1_1     map_chunk_0_1     map_chunk_1_1       ← 下排
 - SparseChunkMap: `Dictionary{Vector2i(chunk_x, chunk_y) → Chunk}`，仅加载被访问的 Chunk
 - 持久化路径：`user://map_data_2d/map_chunk_{x}_{y}.tres`
 
+### Chunk 数据格式
+
+`.tres` 中存储 `PackedByteArray`，一维数组表示 256×256 网格：
+
+```gdscript
+# Chunk 内部
+var cells: PackedByteArray  # 65536 bytes
+# index = local_y * 256 + local_x
+# cells[index] = 0  → 可通行
+# cells[index] = 1  → 不可通行
+```
+
+### MapData2D API
+
+```gdscript
+# 全量覆盖某个 Chunk
+func set_chunk_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void
+
+# 增量更新某个 Chunk（cells 中 0/1 有效位，非 0/1 跳过）
+func set_chunk_delta(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void
+
+# 查询单格
+func get_cell(gx: int, gz: int) -> int
+
+# 信号
+signal chunk_updated(chunk_x: int, chunk_y: int)
+```
+
+- `set_full` / `set_delta` 收到全局体素 → 按坐标分组 → 调用对应 Chunk 的 `set_chunk_full/delta`
+- 更新后自动 `ResourceSaver.save()` 持久化
+- `chunk_updated` 通知渲染层重绘
+
 ## 状态
 
 - [x] 进行中
