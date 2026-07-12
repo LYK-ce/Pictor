@@ -1,69 +1,8 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/websocket/websocket_manager.gd" id="1_mgr"]
-[ext_resource type="PackedScene" uid="" path="res://src/websocket_client/websocket_client.tscn" id="2_ws"]
+[ext_resource type="PackedScene" uid="" path="res://src/websocket/websocket_client.tscn" id="2_ws"]
 
-[node name="WebSocketManager" type="Control"]
-layout_mode = 3
-anchors_preset = 2
-anchor_top = 0.0
-anchor_bottom = 1.0
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -230.0
-grow_horizontal = 0
+[node name="WebSocketManager" type="Node"]
 script = ExtResource("1_mgr")
 ws_client_scene = ExtResource("2_ws")
-
-[node name="Panel" type="Panel" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-modulate = Color(0, 0, 0, 0.5)
-
-[node name="VBoxContainer" type="VBoxContainer" parent="Panel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
-theme_override_constants/separation = 6
-
-[node name="Title" type="Label" parent="Panel/VBoxContainer"]
-layout_mode = 2
-text = "连接管理"
-horizontal_alignment = 1
-
-[node name="Scroll" type="ScrollContainer" parent="Panel/VBoxContainer"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="List" type="VBoxContainer" parent="Panel/VBoxContainer/Scroll"]
-layout_mode = 2
-
-[node name="InputRow" type="HBoxContainer" parent="Panel/VBoxContainer"]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="IP" type="LineEdit" parent="Panel/VBoxContainer/InputRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "IP"
-
-[node name="Port" type="SpinBox" parent="Panel/VBoxContainer/InputRow"]
-layout_mode = 2
-min_value = 1.0
-max_value = 65535.0
-value = 9090.0
-
-[node name="BtnConfirm" type="Button" parent="Panel/VBoxContainer/InputRow"]
-layout_mode = 2
-text = "确认"
-
-[node name="BtnCreate" type="Button" parent="Panel/VBoxContainer"]
-layout_mode = 2
-text = "创建连接"

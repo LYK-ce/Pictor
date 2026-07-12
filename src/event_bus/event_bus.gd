@@ -3,11 +3,9 @@ extends Node
 ## Date: 2026-06-08
 ##
 ## EventBus — 全局事件总线（Autoload 单例）
-## 所有跨组件通信的唯一通道。组件只认识 EventBus，彼此零引用。
 
 signal pose_received(pose: Dictionary)
-signal voxel_received(voxels: Array, is_full: bool)
+signal map_full_received(voxels: Array)
+signal map_delta_received(voxels: Array)
 signal chunk_updated(chunk_x: int, chunk_y: int)
-signal ctrl_send(ctrl: Dictionary)
-signal zoom_changed(zoom: float)
 signal ws_connected

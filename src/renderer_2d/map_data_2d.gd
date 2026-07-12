@@ -11,6 +11,11 @@ const SAVE_DIR := "user://map_data_2d/"
 var _chunks: Dictionary = {}  # Vector2i(chunk_x, chunk_y) → ChunkData2D
 
 
+func _ready() -> void:
+	EventBus.map_full_received.connect(set_full)
+	EventBus.map_delta_received.connect(set_delta)
+
+
 # ─── 全局入口 ─────────────────────────────────────────────────
 
 func set_full(voxels: Array) -> void:

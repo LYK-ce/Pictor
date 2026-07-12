@@ -21,19 +21,13 @@ func _ready() -> void:
 
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.chunk_updated.connect(_on_chunk_updated)
-	EventBus.zoom_changed.connect(_on_zoom)
 	EventBus.ws_connected.connect(_on_ws_connected)
-	EventBus.zoom_changed.emit(1.0)
 
 
 func _on_ws_connected() -> void:
 	if vehicle_scene and not _vehicle_instance:
 		_vehicle_instance = vehicle_scene.instantiate()
 		_vehicle_container.add_child(_vehicle_instance)
-
-
-func _on_zoom(zoom: float) -> void:
-	_camera.zoom = Vector2(zoom, zoom)
 
 
 func _on_pose(pose: Dictionary) -> void:
