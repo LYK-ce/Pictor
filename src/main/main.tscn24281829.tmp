@@ -1,13 +1,10 @@
-[gd_scene format=3 uid="uid://3h0fcmgnr44x"]
+[gd_scene format=3 uid="uid://dsgkql5cuyyvw"]
 
 [ext_resource type="Script" uid="uid://dbtw7ka04tcgy" path="res://src/main/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
 [ext_resource type="PackedScene" path="res://src/renderer_2d/map_data_2d.tscn" id="3_md"]
 
-[node name="Main" type="Node" unique_id=952128372]
+[node name="Main" type="Node" unique_id=2008065355]
 script = ExtResource("1_main")
 renderer_2d_scene = ExtResource("2_r2d")
-
-[node name="MapData2D" parent="." unique_id=1758782417 instance=ExtResource("3_md")]
-
-[node name="Renderer2D" parent="." unique_id=756064493 instance=ExtResource("2_r2d")]
+map_data_2d_scene = ExtResource("3_md")
