@@ -138,12 +138,28 @@ signal chunk_updated(chunk_x: int, chunk_y: int)
 
 ### 下一步：Chunk 渲染验证
 
-- [ ] 创建 `ChunkData2D` Resource 类（`extends Resource`, `@export var cells: PackedByteArray`）
-- [ ] 创建 `MapData2D` 节点脚本（`src/renderer_2d/map_data_2d.gd`），实现 API
-- [ ] 用脚本生成 `map_chunk_0_0.tres`（随机 0/1），放到 `user://map_data_2d/`
-- [ ] `main.gd._ready()` 挂载 MapData2D → `load_chunk(0,0)` → emit `chunk_updated`
-- [ ] `Renderer2D` 订阅 `chunk_updated`，调用 `MapContainer2D.render_chunk()`
-- [ ] `MapContainer2D` 实现 `render_chunk`，旧数据逻辑全部删除
+- [x] 创建 `ChunkData2D` Resource 类
+- [x] 创建 `MapData2D` 节点脚本，实现 API
+- [x] 用脚本生成 `map_chunk_0_0.tres`，放到 `user://map_data_2d/`
+- [x] `main.gd._ready()` 挂载 MapData2D → `load_chunk(0,0)` → emit `chunk_updated`
+- [x] `Renderer2D` 订阅 `chunk_updated`，调用 `MapContainer2D.render_chunk()`
+- [x] `MapContainer2D` 实现 `render_chunk`
+
+### autotile 渲染 — 已修复
+
+- [x] ground tile (1,9) — 去掉 4 个 peering bit，变为孤立 ground tile
+- [x] wall tile — 已有方向变体 + 孤立 tile (11,6)
+- [x] `MapContainer2D.render_chunk` — ground + wall 均走 `set_cells_terrain_connect`
+
+### 待完成：Vehicle 调整
+
+- [ ] vehicle scale 设为 0.5（31×32 → ~16×16，对齐 tile 尺寸）
+- [ ] vehicle 位置调整 —— 待定
+
+### 启动精简
+
+- [x] `main.gd` — 移除 Chunk 加载 + emit 逻辑
+- [x] `renderer_2d.gd` — 移除启动时 vehicle 实例化 `_spawn_vehicle`
 
 ## 状态
 

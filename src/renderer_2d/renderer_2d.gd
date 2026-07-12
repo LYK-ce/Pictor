@@ -25,16 +25,6 @@ func _ready() -> void:
 	EventBus.ws_connected.connect(_on_ws_connected)
 	EventBus.zoom_changed.emit(1.0)
 
-	# 测试：在 (50,50) 放置小车
-	_spawn_vehicle(Vector2(50, 50))
-
-
-func _spawn_vehicle(pos: Vector2) -> void:
-	if vehicle_scene and not _vehicle_instance:
-		_vehicle_instance = vehicle_scene.instantiate()
-		_vehicle_container.add_child(_vehicle_instance)
-		_vehicle_instance.position = pos
-
 
 func _on_ws_connected() -> void:
 	if vehicle_scene and not _vehicle_instance:
