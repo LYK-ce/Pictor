@@ -8,7 +8,8 @@ extends Node2D
 const SOURCE_ID := 8
 const CHUNK_SIZE := 256
 const ATLAS_GROUND := Vector2i(1, 9)
-const ATLAS_WALL := Vector2i(11, 6)
+const TERRAIN_SET := 0
+const TERRAIN_WALL := 0
 
 @onready var _ground_layer := $GroundLayer as TileMapLayer
 @onready var _wall_layer := $WallLayer as TileMapLayer
@@ -23,11 +24,16 @@ func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 	var offset_x: int = chunk_x * CHUNK_SIZE
 	var offset_y: int = chunk_y * CHUNK_SIZE
 
+	var wall_cells: Array[Vector2i] = []
+
 	for ly in range(CHUNK_SIZE):
 		for lx in range(CHUNK_SIZE):
 			var idx: int = ly * CHUNK_SIZE + lx
 			var pos := Vector2i(offset_x + lx, offset_y + ly)
 			if cells[idx] == 1:
-				_wall_layer.set_cell(pos, SOURCE_ID, ATLAS_WALL)
+				wall_cells.append(pos)
 			else:
 				_ground_layer.set_cell(pos, SOURCE_ID, ATLAS_GROUND)
+
+	if not wall_cells.is_empty():
+		_wall_layer.set_cells_terrain_connect(wall_cells, TERRAIN_SET, TERRAIN_WALL, true)
