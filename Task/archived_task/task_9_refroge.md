@@ -163,4 +163,4 @@ signal chunk_updated(chunk_x: int, chunk_y: int)
 
 ## 状态
 
-- [x] 进行中
+- [x] 已完成
