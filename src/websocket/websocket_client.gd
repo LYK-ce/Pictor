@@ -22,7 +22,8 @@ func init(url: String) -> void:
 
 func _ready() -> void:
 	print("[WS] _ready url=", _url)
-	call_deferred("_connect")
+	_reconnect_timer = _reconnect_interval  # 防止 _process 第一帧重连
+	_connect()
 
 
 func _process(delta: float) -> void:
