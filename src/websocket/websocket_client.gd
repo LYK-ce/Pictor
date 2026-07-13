@@ -44,9 +44,7 @@ func _process(delta: float) -> void:
 			EventBus.ws_connected.emit()
 		elif st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
 			_disconnect()
-
-	if _state != WebSocketPeer.STATE_OPEN:
-		return
+			return
 
 	if st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
 		_disconnect()
