@@ -29,7 +29,7 @@ def build_map(size: int = MAP_SIZE) -> list[dict]:
                 "gx": gx,
                 "gy": gy,
                 "gz": 0,
-                "state": 2 if is_wall else 1,
+                "state": 1 if is_wall else 0,  # 0=可通行 1=不可通行
                 "conf": 1.0,
             })
     return voxels
@@ -42,7 +42,7 @@ async def handler(websocket):
     # 生成地图
     print("[*] building map...")
     voxels = build_map(MAP_SIZE)
-    print(f"[*] map size: {len(voxels)} cells, ~{sum(1 for v in voxels if v['state']==2)} walls")
+    print(f"[*] map size: {len(voxels)} cells, ~{sum(1 for v in voxels if v['state']==1)} walls")
 
     # 发送 map_full
     msg = json.dumps({
