@@ -42,8 +42,13 @@ func _process(delta: float) -> void:
 			print("[WS] connected to ", _url)
 			connected.emit()
 			EventBus.ws_connected.emit()
-		return
+		else:
+			return
 
+	_read_packets()
+
+
+func _read_packets() -> void:
 	while _ws.get_available_packet_count() > 0:
 		var pkt := _ws.get_packet()
 		if pkt.size() == 0:
