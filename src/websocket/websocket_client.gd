@@ -90,7 +90,7 @@ func _on_message(text: String) -> void:
 	if not data is Dictionary:
 		return
 
-	var msg_type := data.get("type", "")
+	var msg_type: String = data.get("type", "")
 	print("[WS] msg type: ", msg_type)
 	match msg_type:
 		"pose":
