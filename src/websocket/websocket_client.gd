@@ -21,6 +21,7 @@ func init(url: String) -> void:
 
 
 func _ready() -> void:
+	print("[WS] init url: ", _url)
 	_connect()
 
 
@@ -28,6 +29,7 @@ func _process(delta: float) -> void:
 	if _state == WebSocketPeer.STATE_CLOSED:
 		_reconnect_timer -= delta
 		if _reconnect_timer <= 0.0:
+			print("[WS] reconnecting to ", _url)
 			_connect()
 		return
 
@@ -36,6 +38,7 @@ func _process(delta: float) -> void:
 		var st := _ws.get_ready_state()
 		if st == WebSocketPeer.STATE_OPEN:
 			_state = WebSocketPeer.STATE_OPEN
+			print("[WS] connected to ", _url)
 			connected.emit()
 			EventBus.ws_connected.emit()
 		elif st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
@@ -61,8 +64,10 @@ func _connect() -> void:
 	_ws = WebSocketPeer.new()
 	var err := _ws.connect_to_url(_url)
 	if err != OK:
+		printerr("[WS] connect failed: ", err)
 		_disconnect()
 		return
+	print("[WS] connecting to ", _url)
 
 
 func _disconnect() -> void:
