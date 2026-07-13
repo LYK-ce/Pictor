@@ -14,7 +14,7 @@ from websockets.asyncio.server import serve
 
 HOST = "0.0.0.0"
 PORT = 9090
-MAP_SIZE = 256  # Chunk 大小
+MAP_SIZE = 50  # 测试用，缩小避免大消息断开
 
 
 def build_map(size: int = MAP_SIZE) -> list[dict]:

@@ -73,6 +73,7 @@ func _connect() -> void:
 func _disconnect() -> void:
 	_state = WebSocketPeer.STATE_CLOSED
 	_reconnect_timer = _reconnect_interval
+	print("[WS] disconnected from ", _url)
 	disconnected.emit()
 
 
