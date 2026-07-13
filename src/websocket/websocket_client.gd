@@ -18,9 +18,6 @@ signal disconnected
 
 func init(url: String) -> void:
 	_url = url
-
-
-func _ready() -> void:
 	_connect()
 
 
@@ -32,23 +29,14 @@ func _process(delta: float) -> void:
 			_connect()
 		return
 
+	_ws.poll()
+
 	if _state != State.CONNECTED:
-		_ws.poll()
-		var st := _ws.get_ready_state()
-		if st == WebSocketPeer.STATE_OPEN:
+		if _ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 			_state = State.CONNECTED
 			print("[WS] connected to ", _url)
 			connected.emit()
 			EventBus.ws_connected.emit()
-		elif st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
-			_disconnect()
-		return
-
-	# 已连接：轮询收消息
-	_ws.poll()
-	var st := _ws.get_ready_state()
-	if st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
-		_disconnect()
 		return
 
 	while _ws.get_available_packet_count() > 0:
