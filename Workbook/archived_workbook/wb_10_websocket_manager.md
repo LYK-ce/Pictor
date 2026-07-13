@@ -26,5 +26,13 @@
 - date: 2026-07-13
 - Godot WebSocketPeer 默认 inbound_buffer_size = 65535 (64KB)
 - map_full 消息 137KB 超出默认缓冲 → WebSocketPeer 内部断开
-- 修复: `_ws.inbound_buffer_size = 1 << 20` (1MB)
+- 修复: `_ws.inbound_buffer_size = 1 << 22` (4MB)
 - 注: 后续如需发更大 Chunk (256×256≈2.6MB)，需进一步增大或改用分片
+
+## known_gaps
+- WebSocketClient 当前无重连机制（_process 仅 poll + 收包，无 DISCONNECTED 状态处理）
+- 后续需恢复重连逻辑
+
+## meta
+- end: 2026-07-13
+- status: done
