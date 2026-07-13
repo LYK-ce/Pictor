@@ -3,17 +3,17 @@ extends Node
 ## Date: 2026-07-12
 ##
 ## WebSocketClient — WebSocket 通信组件
-## 发：send() 发送文本，未连接报错
-## 收：_on_message 解析 JSON → EventBus emit
+
+enum State { DISCONNECTED, CONNECTING, CONNECTED }
+
+var _ws: WebSocketPeer = null
+var _state := State.DISCONNECTED
+var _url := ""
+var _reconnect_interval := 3.0
+var _reconnect_timer := 0.0
 
 signal connected
 signal disconnected
-
-var _ws: WebSocketPeer = null
-var _url := ""
-var _state := WebSocketPeer.STATE_CLOSED
-var _reconnect_interval := 3.0
-var _reconnect_timer := 0.0
 
 
 func init(url: String) -> void:
@@ -21,39 +21,37 @@ func init(url: String) -> void:
 
 
 func _ready() -> void:
-	print("[WS] init url: ", _url)
 	_connect()
 
 
 func _process(delta: float) -> void:
-	if _state == WebSocketPeer.STATE_CLOSED:
+	if _state == State.DISCONNECTED:
 		_reconnect_timer -= delta
 		if _reconnect_timer <= 0.0:
 			print("[WS] reconnecting to ", _url)
 			_connect()
 		return
 
-	_ws.poll()
-	var st := _ws.get_ready_state()
-	var pkt_count: int = _ws.get_available_packet_count()
-
-	if _state != WebSocketPeer.STATE_OPEN:
+	if _state != State.CONNECTED:
+		_ws.poll()
+		var st := _ws.get_ready_state()
 		if st == WebSocketPeer.STATE_OPEN:
-			_state = WebSocketPeer.STATE_OPEN
-			print("[WS] connected to ", _url, " pkts=", pkt_count)
+			_state = State.CONNECTED
+			print("[WS] connected to ", _url)
 			connected.emit()
 			EventBus.ws_connected.emit()
 		elif st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
 			_disconnect()
-			return
+		return
 
+	# 已连接：轮询收消息
+	_ws.poll()
+	var st := _ws.get_ready_state()
 	if st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
-		print("[WS] closing/closing, pkts=", pkt_count)
 		_disconnect()
 		return
 
 	while _ws.get_available_packet_count() > 0:
-		print("[WS] reading packet, state=", st)
 		var pkt := _ws.get_packet()
 		if pkt.size() == 0:
 			continue
@@ -62,7 +60,7 @@ func _process(delta: float) -> void:
 
 
 func _connect() -> void:
-	_state = WebSocketPeer.STATE_CONNECTING
+	_state = State.CONNECTING
 	_ws = WebSocketPeer.new()
 	var err := _ws.connect_to_url(_url)
 	if err != OK:
@@ -73,14 +71,14 @@ func _connect() -> void:
 
 
 func _disconnect() -> void:
-	_state = WebSocketPeer.STATE_CLOSED
+	_state = State.DISCONNECTED
 	_reconnect_timer = _reconnect_interval
 	print("[WS] disconnected from ", _url)
 	disconnected.emit()
 
 
 func send(msg: String) -> void:
-	if _state != WebSocketPeer.STATE_OPEN:
+	if _state != State.CONNECTED:
 		printerr("[WS] send failed: not connected")
 		return
 	_ws.send_text(msg)
