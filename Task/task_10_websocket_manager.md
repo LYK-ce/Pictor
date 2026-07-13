@@ -88,7 +88,7 @@ signal ws_connected
 
 ### 协议坐标系对齐
 
-- [ ] 更新 `docs/websocket_protocol.md`
+- [x] 更新 `docs/websocket_protocol.md`
   - 坐标系：2D 用 `(x, y)`，3D 高度用 `z`，与 Godot 统一
   - voxel 字段 `gx, gy` 为 2D 网格坐标，`gz` 为高度层
   - pose 字段 `x, y` 为 2D 世界坐标，`z` 为高度
@@ -96,4 +96,27 @@ signal ws_connected
 
 ## 状态
 
-- [ ] 未开始
+- [x] 已完成 (2026-07-13)
+
+## 新任务
+
+### 重构测试方案
+
+- [x] 删除 `test/` 目录（所有 `.gd` 测试脚本）
+- [x] 创建 `test_tool/` 目录，仅保留 Python 工具
+  - 移入 `test/test_tool/mock_car_server.py`
+  - 删除 `mock_car_server_3d.py`
+- [x] 重构 `mock_vehicle.py`（仅 2D，简化版）
+  - 等待 Godot 连接
+  - 连接后发送一次 `map_full`
+  - 不包含 pose 循环、cmd 处理
+- [x] 更新 `main.gd` + `main.tscn` 测试流程
+  - Main 启动后挂载 WebSocketManager
+  - 自动 `create_connection("ws://localhost:9090")`
+  - 连接 → 收 map_full → MapData2D 更新 → Renderer2D 渲染
+  - 测试流程：先启 mock_vehicle.py → 再启 Godot → 看到地图即通过
+- [ ] 后续测试以 Python mock server 为主，配合 Godot 编辑器手动验证
+
+## 状态
+
+- [ ] 进行中
