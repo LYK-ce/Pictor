@@ -19,5 +19,12 @@
 
 ## test_infra
 - 2026-07-13: 删除 test/，创建 test_tool/
-- 2026-07-13: mock_vehicle.py — 等待连接，发 map_full（20×20，5% 随机墙）
-- 2026-07-13: main 挂 WebSocketManager，自连 ws://localhost:9090
+- 2026-07-13: mock_vehicle.py — 先发 map_full(50×50) → 再循环发 pose(1Hz)
+- 2026-07-13: main 挂 WebSocketManager，自连 ws://127.0.0.1:9090
+
+## ws_buffer_issue
+- date: 2026-07-13
+- Godot WebSocketPeer 默认 inbound_buffer_size = 65535 (64KB)
+- map_full 消息 137KB 超出默认缓冲 → WebSocketPeer 内部断开
+- 修复: `_ws.inbound_buffer_size = 1 << 20` (1MB)
+- 注: 后续如需发更大 Chunk (256×256≈2.6MB)，需进一步增大或改用分片
