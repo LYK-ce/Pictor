@@ -19,6 +19,8 @@ func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 	if cells.size() != CHUNK_SIZE * CHUNK_SIZE:
 		return
 
+	print("[MapContainer2D] render_chunk: (%d,%d), %d cells" % [chunk_x, chunk_y, cells.size()])
+
 	_wall_layer.clear()
 
 	var offset_x: int = chunk_x * CHUNK_SIZE

@@ -79,21 +79,26 @@ func send(msg: String) -> void:
 
 
 func _on_message(text: String) -> void:
+	print("[WS] received message: ", text.length(), " bytes")
 	var json := JSON.new()
 	var err := json.parse(text)
 	if err != OK:
-		printerr("[WS] bad JSON: ", text)
+		printerr("[WS] bad JSON: ", text.left(100))
 		return
 
 	var data = json.get_data()
 	if not data is Dictionary:
 		return
 
-	match data.get("type"):
+	var msg_type := data.get("type", "")
+	print("[WS] msg type: ", msg_type)
+	match msg_type:
 		"pose":
 			EventBus.pose_received.emit(data)
 		"map_full":
-			EventBus.map_full_received.emit(data.get("voxels", []))
+			var voxels = data.get("voxels", [])
+			print("[WS] map_full: ", voxels.size(), " voxels")
+			EventBus.map_full_received.emit(voxels)
 		"map_delta":
 			EventBus.map_delta_received.emit(data.get("voxels", []))
 
