@@ -22,18 +22,10 @@ func init(url: String) -> void:
 
 func _ready() -> void:
 	print("[WS] _ready url=", _url)
-	_reconnect_timer = _reconnect_interval  # 防止 _process 第一帧重连
 	_connect()
 
 
-func _process(delta: float) -> void:
-	if _state == State.DISCONNECTED:
-		_reconnect_timer -= delta
-		if _reconnect_timer <= 0.0:
-			print("[WS] reconnecting to ", _url)
-			_connect()
-		return
-
+func _process(_delta: float) -> void:
 	_ws.poll()
 
 	if _state != State.CONNECTED:
@@ -42,8 +34,6 @@ func _process(delta: float) -> void:
 			print("[WS] connected to ", _url)
 			connected.emit()
 			EventBus.ws_connected.emit()
-		else:
-			return
 
 	_read_packets()
 
