@@ -28,7 +28,7 @@ async def handler(websocket):
     import random
     random.seed(42)
     voxels = []
-    size = 50
+    size = 256  # 完整 Chunk
     for gx in range(size):
         for gy in range(size):
             is_wall = random.random() < 0.05

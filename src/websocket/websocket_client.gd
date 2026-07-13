@@ -50,7 +50,7 @@ func _read_packets() -> void:
 func _connect() -> void:
 	_state = State.CONNECTING
 	_ws = WebSocketPeer.new()
-	_ws.inbound_buffer_size = 1 << 20  # 1MB
+	_ws.inbound_buffer_size = 1 << 22  # 4MB
 	var err := _ws.connect_to_url(_url)
 	if err != OK:
 		printerr("[WS] connect failed: ", err)
