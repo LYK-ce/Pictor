@@ -24,6 +24,20 @@ async def handler(websocket):
     y = 10.0
     pose_count = 0
 
+    # 先发地图
+    import random
+    random.seed(42)
+    voxels = []
+    size = 50
+    for gx in range(size):
+        for gy in range(size):
+            is_wall = random.random() < 0.05
+            voxels.append({"gx": gx, "gy": gy, "gz": 0, "state": 1 if is_wall else 0, "conf": 1.0})
+    map_msg = json.dumps({"type": "map_full", "ts": time.time(), "voxels": voxels})
+    print(f"[→] sending map_full ({len(map_msg)} bytes, {len(voxels)} cells)")
+    await websocket.send(map_msg)
+    print(f"[✓] map_full sent")
+
     try:
         while True:
             msg = json.dumps({
