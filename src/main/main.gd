@@ -10,5 +10,5 @@ func _ready() -> void:
 
 	# 测试：连接 mock vehicle
 	var mgr: Node = $WebSocketManager
-	mgr.create_connection("ws://localhost:9090")
-	print("[Main] connecting to ws://localhost:9090")
+	mgr.create_connection("ws://127.0.0.1:9090")
+	print("[Main] connecting to ws://127.0.0.1:9090")
