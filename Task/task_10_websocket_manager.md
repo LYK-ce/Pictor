@@ -106,10 +106,8 @@ signal ws_connected
 - [x] 创建 `test_tool/` 目录，仅保留 Python 工具
   - 移入 `test/test_tool/mock_car_server.py`
   - 删除 `mock_car_server_3d.py`
-- [x] 重构 `mock_vehicle.py`（仅 2D，简化版）
-  - 等待 Godot 连接
-  - 连接后发送一次 `map_full`
-  - 不包含 pose 循环、cmd 处理
+- [x] 修复 `mock_vehicle.py` — 按 Chunk 粒度发送数据
+  - 改为发送完整 256×256 chunk(0,0) 数据
 - [x] 更新 `main.gd` + `main.tscn` 测试流程
   - Main 启动后挂载 WebSocketManager
   - 自动 `create_connection("ws://localhost:9090")`
