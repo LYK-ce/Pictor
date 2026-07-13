@@ -18,7 +18,11 @@ signal disconnected
 
 func init(url: String) -> void:
 	_url = url
-	_connect()
+
+
+func _ready() -> void:
+	print("[WS] _ready url=", _url)
+	call_deferred("_connect")
 
 
 func _process(delta: float) -> void:
