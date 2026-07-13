@@ -33,9 +33,10 @@ func _process(delta: float) -> void:
 			_connect()
 		return
 
+	_ws.poll()
+	var st := _ws.get_ready_state()
+
 	if _state != WebSocketPeer.STATE_OPEN:
-		_ws.poll()
-		var st := _ws.get_ready_state()
 		if st == WebSocketPeer.STATE_OPEN:
 			_state = WebSocketPeer.STATE_OPEN
 			print("[WS] connected to ", _url)
@@ -43,10 +44,10 @@ func _process(delta: float) -> void:
 			EventBus.ws_connected.emit()
 		elif st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
 			_disconnect()
+
+	if _state != WebSocketPeer.STATE_OPEN:
 		return
 
-	_ws.poll()
-	var st := _ws.get_ready_state()
 	if st == WebSocketPeer.STATE_CLOSING or st == WebSocketPeer.STATE_CLOSED:
 		_disconnect()
 		return
