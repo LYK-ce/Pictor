@@ -63,7 +63,10 @@ func _try_accept() -> void:
 
 
 func _send(msg: String) -> void:
-	_peer.send_text(msg)
+	var err := _peer.send_text(msg)
+	if err != OK:
+		printerr("[TestWS] send_text failed: ", err)
+	_peer.poll()  # flush
 
 
 func _send_map() -> void:
@@ -80,12 +83,12 @@ func _send_map() -> void:
 				"state": 1, "conf": 1.0
 			})
 
-	print("[TestWS] sending map_full: ", voxels.size(), " wall cells")
 	var msg := JSON.stringify({
 		"type": "map_full",
 		"ts": Time.get_unix_time_from_system(),
 		"voxels": voxels
 	})
+	print("[TestWS] sending map_full: ", voxels.size(), " wall cells, ", msg.length(), " bytes")
 	_send(msg)
 
 
