@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dpxaui8sqcpaq"
-path="res://.godot/imported/southeast.png-2e2be1734d1d631a60d74fb633bb1460.ctex"
+uid="uid://kp7nbu6alwi0"
+path="res://.godot/imported/Godot_Autotiles_16x16.png-0b9657aec44518239cb9550dad2da76d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/2D/southeast.png"
-dest_files=["res://.godot/imported/southeast.png-2e2be1734d1d631a60d74fb633bb1460.ctex"]
+source_file="res://Assets/2D/tilemap/Godot_Autotiles_16x16.png"
+dest_files=["res://.godot/imported/Godot_Autotiles_16x16.png-0b9657aec44518239cb9550dad2da76d.ctex"]
 
 [params]
 
