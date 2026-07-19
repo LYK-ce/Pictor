@@ -14,7 +14,3 @@ script = ExtResource("1_main")
 texture_filter = 1
 
 [node name="WebSocketManager" parent="." unique_id=99410890 instance=ExtResource("4_ws")]
-
-[node name="Camera2D" type="Camera2D" parent="." unique_id=2046499696]
-position = Vector2(566, 316)
-zoom = Vector2(4, 4)
