@@ -1,16 +1,20 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://j4xey3gnduvd"]
 
-[ext_resource type="Script" path="res://src/main/main.gd" id="1_main"]
-[ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
-[ext_resource type="PackedScene" uid="" path="res://src/renderer_2d/map_data_2d.tscn" id="3_md"]
-[ext_resource type="PackedScene" uid="" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
-[ext_resource type="PackedScene" uid="" path="res://src/websocket/websocket_client.tscn" id="5_wsc"]
+[ext_resource type="Script" uid="uid://dbtw7ka04tcgy" path="res://src/main/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
+[ext_resource type="PackedScene" path="res://src/renderer_2d/map_data_2d.tscn" id="3_md"]
+[ext_resource type="PackedScene" uid="uid://e00fqtu68eno" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
 
-[node name="Main" type="Node"]
+[node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
 
-[node name="MapData2D" parent="." instance=ExtResource("3_md")]
+[node name="MapData2D" parent="." unique_id=714336350 instance=ExtResource("3_md")]
 
-[node name="Renderer2D" parent="." instance=ExtResource("2_r2d")]
+[node name="Renderer2D" parent="." unique_id=657749729 instance=ExtResource("2_r2d")]
+texture_filter = 1
 
-[node name="WebSocketManager" parent="." instance=ExtResource("4_ws")]
+[node name="WebSocketManager" parent="." unique_id=99410890 instance=ExtResource("4_ws")]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=2046499696]
+position = Vector2(566, 316)
+zoom = Vector2(4, 4)

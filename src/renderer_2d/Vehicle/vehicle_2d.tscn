@@ -55,6 +55,8 @@ animations = [{
 [node name="Vehicle2D" type="Node2D" unique_id=1591744708]
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1395880036]
+texture_filter = 1
+scale = Vector2(0.5, 0.5)
 sprite_frames = SubResource("SpriteFrames_1oou7")
 autoplay = "default"
 frame_progress = 0.08163812
