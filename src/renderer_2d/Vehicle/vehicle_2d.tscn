@@ -1,9 +1,60 @@
 [gd_scene format=3 uid="uid://uno5uh8ep1ik"]
 
-[ext_resource type="Texture2D" uid="uid://diar82i8j01cq" path="res://Assets/2D/vehicle.png" id="1_06gi5"]
+[ext_resource type="Texture2D" uid="uid://bmmjk1k0bskso" path="res://Assets/2D/Vehicle/Car_classic_blue_complete_.png" id="1_06gi5"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5txsu"]
+atlas = ExtResource("1_06gi5")
+region = Rect2(480, 72, 32, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u0xky"]
+atlas = ExtResource("1_06gi5")
+region = Rect2(512, 72, 32, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8gvsx"]
+atlas = ExtResource("1_06gi5")
+region = Rect2(544, 72, 32, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u0p5b"]
+atlas = ExtResource("1_06gi5")
+region = Rect2(576, 72, 32, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ddc6q"]
+atlas = ExtResource("1_06gi5")
+region = Rect2(608, 72, 32, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nmudg"]
+atlas = ExtResource("1_06gi5")
+region = Rect2(640, 72, 32, 72)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_1oou7"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_5txsu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u0xky")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8gvsx")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u0p5b")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ddc6q")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nmudg")
+}],
+"loop": 1,
+"name": &"default",
+"speed": 5.0
+}]
 
 [node name="Vehicle2D" type="Node2D" unique_id=1591744708]
 
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=53102210]
-texture_filter = 1
-texture = ExtResource("1_06gi5")
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1395880036]
+sprite_frames = SubResource("SpriteFrames_1oou7")
+autoplay = "default"
+frame_progress = 0.08163812
