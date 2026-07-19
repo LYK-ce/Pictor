@@ -8,13 +8,14 @@ extends Node
 const PORT := 9090
 const CHUNK_SIZE := 256
 
+enum State { WAITING, HANDSHAKING, CONNECTED }
+var _state := State.WAITING
 var _server: TCPServer = null
 var _peer: WebSocketPeer = null
-var _tcp: StreamPeerTCP = null
-var _connected := false
 var _x := 5.0
 var _y := 5.0
 var _timer := 0.0
+var _map_sent := false
 
 
 func _ready() -> void:
@@ -31,27 +32,33 @@ func _start_server() -> void:
 
 
 func _process(delta: float) -> void:
-	if not _connected:
-		_try_accept()
+	match _state:
+		State.WAITING:
+			_try_accept()
 
-	if _connected:
-		_peer.poll()
-		# 每秒发一次 pose，随机移动
-		_timer += delta
-		if _timer >= 0.5:
-			_timer = 0.0
-			_send_random_pose()
+		State.HANDSHAKING:
+			_peer.poll()
+			if _peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
+				_state = State.CONNECTED
+				print("[TestWS] handshake complete")
+				_send_map()
+
+		State.CONNECTED:
+			_peer.poll()
+			_timer += delta
+			if _timer >= 0.5:
+				_timer = 0.0
+				_send_random_pose()
 
 
 func _try_accept() -> void:
 	if not _server.is_connection_available():
 		return
-	_tcp = _server.take_connection()
+	var tcp := _server.take_connection()
 	_peer = WebSocketPeer.new()
-	_peer.accept_stream(_tcp)
-	_connected = true
-	print("[TestWS] client connected")
-	_send_map()
+	_peer.accept_stream(tcp)
+	_state = State.HANDSHAKING
+	print("[TestWS] client connecting, handshaking...")
 
 
 func _send(msg: String) -> void:
@@ -71,8 +78,6 @@ func _send_map() -> void:
 				"gx": gx, "gy": gy, "gz": 0,
 				"state": 1, "conf": 1.0
 			})
-			# 同时发送一个 ground cell 覆盖全图（可选）
-			# 只发送墙的 voxel 以减少数据量
 
 	print("[TestWS] sending map_full: ", voxels.size(), " wall cells")
 	var msg := JSON.stringify({
@@ -84,10 +89,8 @@ func _send_map() -> void:
 
 
 func _send_random_pose() -> void:
-	# 随机游走
 	_x += randf_range(-1.0, 1.0)
 	_y += randf_range(-1.0, 1.0)
-	# 限制在地图内
 	_x = clampf(_x, 2.0, CHUNK_SIZE - 2.0)
 	_y = clampf(_y, 2.0, CHUNK_SIZE - 2.0)
 
