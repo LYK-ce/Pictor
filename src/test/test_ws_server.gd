@@ -57,6 +57,7 @@ func _try_accept() -> void:
 		return
 	var tcp := _server.take_connection()
 	_peer = WebSocketPeer.new()
+	_peer.outbound_buffer_size = 1 << 22  # 4MB
 	_peer.accept_stream(tcp)
 	_state = State.HANDSHAKING
 	print("[TestWS] client connecting, handshaking...")
