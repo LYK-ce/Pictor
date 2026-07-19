@@ -8,7 +8,21 @@ extends Node
 func _ready() -> void:
 	print("[Main] ready: ", get_child_count(), " children")
 
-	# 测试：连接 mock vehicle
+	# 启动测试 WS Server
+	var test_server := _create_test_server()
+	add_child(test_server)
+
+	# 等一帧让 server 就绪，然后连接
+	await get_tree().process_frame
+
 	var mgr: Node = $WebSocketManager
 	mgr.create_connection("ws://127.0.0.1:9090")
 	print("[Main] connecting to ws://127.0.0.1:9090")
+
+
+func _create_test_server() -> Node:
+	var script := load("res://src/test/test_ws_server.gd") as Script
+	var node := Node.new()
+	node.set_script(script)
+	node.name = "TestWSServer"
+	return node
