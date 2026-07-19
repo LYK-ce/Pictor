@@ -1,8 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://e00fqtu68eno"]
 
-[ext_resource type="Script" path="res://src/websocket/websocket_manager.gd" id="1_mgr"]
-[ext_resource type="PackedScene" uid="" path="res://src/websocket/websocket_client.tscn" id="2_ws"]
+[ext_resource type="Script" uid="uid://d3vvbrels327c" path="res://src/websocket/websocket_manager.gd" id="1_mgr"]
+[ext_resource type="PackedScene" path="res://src/websocket/websocket_client.tscn" id="2_ws"]
 
-[node name="WebSocketManager" type="Node"]
+[node name="WebSocketManager" type="Node" unique_id=1686317981]
 script = ExtResource("1_mgr")
 ws_client_scene = ExtResource("2_ws")
