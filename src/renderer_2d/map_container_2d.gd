@@ -5,7 +5,7 @@ extends Node2D
 ## MapContainer2D — 纯渲染层，不持有地图数据
 ## 接收 render_chunk 调用，驱动 GroundLayer / WallLayer 重绘
 
-const SOURCE_ID := 8
+const SOURCE_ID := 0
 const CHUNK_SIZE := 256
 const TERRAIN_SET := 0
 const TERRAIN_WALL := 0
