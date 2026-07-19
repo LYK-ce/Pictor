@@ -40,7 +40,8 @@ func _process(delta: float) -> void:
 			_peer.poll()
 			if _peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
 				_state = State.CONNECTED
-				print("[TestWS] handshake complete")
+				print("[TestWS] handshake complete, waiting 0.5s...")
+				await get_tree().create_timer(0.5).timeout
 				_send_map()
 
 		State.CONNECTED:
