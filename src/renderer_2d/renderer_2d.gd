@@ -11,14 +11,9 @@ extends Node2D
 @onready var _vehicle_container: Node2D = $VehicleContainer
 
 var _vehicle_instance: Node2D = null
-var _camera: Camera2D = null
 
 
 func _ready() -> void:
-	_camera = Camera2D.new()
-	_camera.enabled = true
-	_vehicle_container.add_child(_camera)
-
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.chunk_updated.connect(_on_chunk_updated)
 	EventBus.ws_connected.connect(_on_ws_connected)
