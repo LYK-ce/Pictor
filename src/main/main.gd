@@ -7,15 +7,3 @@ extends Node
 
 func _ready() -> void:
 	print("[Main] ready: ", get_child_count(), " children")
-
-	# 启动内嵌 Mock Server，等待手动连接
-	var test_server := _create_test_server()
-	add_child(test_server)
-
-
-func _create_test_server() -> Node:
-	var script := load("res://src/test/test_ws_server.gd") as Script
-	var node := Node.new()
-	node.set_script(script)
-	node.name = "TestWSServer"
-	return node
