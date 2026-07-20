@@ -6,40 +6,61 @@ extends Node
 
 @export var ws_client_scene: PackedScene
 
-var _connections: Dictionary = {}  # String(url) → WebSocketClient
+var _vehicles: Dictionary = {}  # {vehicle_id → WebSocketClient}，注册前用 url 当 key
 
 
 func _ready() -> void:
 	EventBus.ws_connect_requested.connect(create_connection)
+	EventBus.ws_disconnect_requested.connect(close_connection)
+	EventBus.vehicle_registered.connect(_on_vehicle_registered)
 
 
 func create_connection(url: String) -> void:
-	if _connections.has(url):
-		printerr("[WS-Mgr] already connected: ", url)
+	if _vehicles.has(url):
+		printerr("[WS-Mgr] already connecting: ", url)
 		return
 
 	var ws: Node = ws_client_scene.instantiate()
 	ws.name = url
 	ws.init(url)
+	ws.disconnected.connect(_on_client_disconnected.bind(ws))
 	add_child(ws)
-	_connections[url] = ws
+	_vehicles[url] = ws
 
 
-func close_connection(url: String) -> void:
-	var ws: Node = _connections.get(url, null)
+func _on_client_disconnected(client: Node) -> void:
+	for id in _vehicles:
+		if _vehicles[id] == client:
+			print("[WS-Mgr] client disconnected: ", id)
+			_vehicles.erase(id)
+			EventBus.vehicle_unregistered.emit(id)
+			return
+
+
+func close_connection(vehicle_id: String) -> void:
+	var ws: Node = _vehicles.get(vehicle_id)
 	if ws:
 		ws.queue_free()
-		_connections.erase(url)
+		_vehicles.erase(vehicle_id)
 
 
-func get_connections() -> Array[String]:
+func _on_vehicle_registered(vehicle_id: String, address: String) -> void:
+	var ws = _vehicles.get(address)
+	if not ws:
+		return
+	_vehicles.erase(address)
+	_vehicles[vehicle_id] = ws
+	print("[WS-Mgr] registered: ", vehicle_id, " @ ", address)
+
+
+func get_vehicles() -> Array[String]:
 	var arr: Array[String] = []
-	arr.assign(_connections.keys())
+	arr.assign(_vehicles.keys())
 	return arr
 
 
-func get_state(url: String) -> int:
-	var ws: Node = _connections.get(url, null)
+func get_state(vehicle_id: String) -> int:
+	var ws: Node = _vehicles.get(vehicle_id)
 	if ws:
 		return ws.get_state()
 	return WebSocketPeer.STATE_CLOSED

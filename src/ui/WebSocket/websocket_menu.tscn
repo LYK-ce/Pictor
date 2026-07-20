@@ -48,5 +48,6 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/separation = 4
 script = ExtResource("4_7qmu0")
+vehicle_panel_scene = ExtResource("3_h0dak")
 
 [connection signal="pressed" from="PanelContainer/MarginContainer/VBoxContainer/Connect" to="." method="_on_connect_pressed"]

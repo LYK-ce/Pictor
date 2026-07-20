@@ -1,16 +1,21 @@
 extends PanelContainer
+## Present by KeJi
+## Date: 2026-07-20
+##
+## VehiclePanel — 单车信息面板
 
-@onready var id = $VBoxContainer/ID
-@onready var address = $VBoxContainer/Address
-@onready var pose = $VBoxContainer/Pose
-@onready var pos = $VBoxContainer/Position
-@onready var velocity = $VBoxContainer/Velocity
-
-# 更新vehicle panel使用的方法
-func Update(_id, _addres, _pose, _pos, _velocity):
-	pass
+@onready var _id_label := $VBoxContainer/ID as Label
+@onready var _pose_label := $VBoxContainer/Pose as Label
+@onready var _pos_label := $VBoxContainer/Position as Label
+@onready var _vel_label := $VBoxContainer/Velocity as Label
 
 
-# 按下此按钮发出断开连接信号。
+func Update(vehicle_id: String, position: String, yaw: String, velocity: String) -> void:
+	_id_label.text = vehicle_id
+	_pos_label.text = position
+	_pose_label.text = yaw
+	_vel_label.text = velocity
+
+
 func _on_disconnect_pressed() -> void:
-	pass # Replace with function body.
+	EventBus.ws_disconnect_requested.emit(_id_label.text)

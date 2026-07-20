@@ -15,7 +15,7 @@ func _ready() -> void:
 	EventBus.path_received.connect(_on_path)
 
 
-func _on_pose(pose: Dictionary) -> void:
+func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	var x: float = pose.get("x", 0.0)
 	var y: float = pose.get("y", 0.0)
 	var z: float = pose.get("z", 0.0)

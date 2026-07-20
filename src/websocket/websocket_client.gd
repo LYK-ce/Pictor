@@ -9,6 +9,8 @@ enum State { DISCONNECTED, CONNECTING, CONNECTED }
 var _ws: WebSocketPeer = null
 var _state := State.DISCONNECTED
 var _url := ""
+var _vehicle_id := ""
+var _identified := false
 var _reconnect_interval := 3.0
 var _reconnect_timer := 0.0
 
@@ -62,6 +64,8 @@ func _connect() -> void:
 func _disconnect() -> void:
 	_state = State.DISCONNECTED
 	_reconnect_timer = _reconnect_interval
+	_identified = false
+	_vehicle_id = ""
 	print("[WS] disconnected from ", _url)
 	disconnected.emit()
 
@@ -74,7 +78,6 @@ func send(msg: String) -> void:
 
 
 func _on_message(text: String) -> void:
-	print("[WS] received message: ", text.length(), " bytes")
 	var json := JSON.new()
 	var err := json.parse(text)
 	if err != OK:
@@ -86,13 +89,24 @@ func _on_message(text: String) -> void:
 		return
 
 	var msg_type: String = data.get("type", "")
-	print("[WS] msg type: ", msg_type)
+
+	if msg_type == "hello":
+		_vehicle_id = data.get("vehicle_id", "")
+		_identified = true
+		print("[WS] identified as: ", _vehicle_id)
+		EventBus.vehicle_registered.emit(_vehicle_id, _url)
+		return
+
+	# hello 之前的所有消息丢弃
+	if not _identified:
+		return
+
+	print("[WS] msg: ", msg_type, " from ", _vehicle_id)
 	match msg_type:
 		"pose":
-			EventBus.pose_received.emit(data)
+			EventBus.pose_received.emit(_vehicle_id, data)
 		"map_full":
 			var voxels = data.get("voxels", [])
-			print("[WS] map_full: ", voxels.size(), " voxels")
 			EventBus.map_full_received.emit(voxels)
 		"map_delta":
 			EventBus.map_delta_received.emit(data.get("voxels", []))
@@ -104,3 +118,7 @@ func get_state() -> int:
 
 func get_url() -> String:
 	return _url
+
+
+func get_vehicle_id() -> String:
+	return _vehicle_id
