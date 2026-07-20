@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://efvoq3fxd1ha"]
+
+[ext_resource type="Script" uid="uid://dr12fimj4x38e" path="res://src/ui/WebSocket/vehicle_panel.gd" id="1_i6pk3"]
+
+[node name="Vehicle_Panel" type="PanelContainer" unique_id=1427358211]
+script = ExtResource("1_i6pk3")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1682788166]
+layout_mode = 2
+
+[node name="ID" type="Label" parent="VBoxContainer" unique_id=533402162]
+layout_mode = 2
+text = "小车ID"
+
+[node name="Address" type="Label" parent="VBoxContainer" unique_id=697655462]
+layout_mode = 2
+text = "网络地址"
+
+[node name="Pose" type="Label" parent="VBoxContainer" unique_id=120379300]
+layout_mode = 2
+text = "位姿"
+
+[node name="Position" type="Label" parent="VBoxContainer" unique_id=1299148862]
+layout_mode = 2
+text = "位置"
+
+[node name="Velocity" type="Label" parent="VBoxContainer" unique_id=345460138]
+layout_mode = 2
+text = "速度"
+
+[node name="Disconnect" type="Button" parent="VBoxContainer" unique_id=942960844]
+layout_mode = 2
+text = "断开连接"
+
+[connection signal="pressed" from="VBoxContainer/Disconnect" to="." method="_on_disconnect_pressed"]

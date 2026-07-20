@@ -5,6 +5,7 @@ extends Control
 ## WebSocketMenu — Connect 按钮，弹出 CreationMenu
 
 @export var creation_menu_scene: PackedScene
+@export var vehicle_panel_scene: PackedScene
 var _creation_menu: Control = null
 
 

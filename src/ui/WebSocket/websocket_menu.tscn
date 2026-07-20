@@ -2,17 +2,17 @@
 
 [ext_resource type="Script" uid="uid://mgvfiw10b8qp" path="res://src/ui/WebSocket/websocket_menu.gd" id="1_2jwkf"]
 [ext_resource type="PackedScene" uid="uid://0u6e3bgotaeb" path="res://src/ui/WebSocket/web_socket_creation_menu.tscn" id="2_nspd6"]
+[ext_resource type="PackedScene" uid="uid://efvoq3fxd1ha" path="res://src/ui/WebSocket/vehicle_panel.tscn" id="3_h0dak"]
 
 [node name="WebsocketMenu" type="Control" unique_id=313005512]
 layout_mode = 3
 anchor_left = 0.9
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -40.0
-offset_bottom = 40.0
 grow_horizontal = 0
 script = ExtResource("1_2jwkf")
 creation_menu_scene = ExtResource("2_nspd6")
+vehicle_panel_scene = ExtResource("3_h0dak")
 
 [node name="PanelContainer" type="PanelContainer" parent="." unique_id=148020760]
 layout_mode = 1
@@ -34,7 +34,17 @@ layout_mode = 2
 
 [node name="Connect" type="Button" parent="PanelContainer/MarginContainer/VBoxContainer" unique_id=1037317155]
 layout_mode = 2
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 36
 text = "创建连接"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="PanelContainer/MarginContainer/VBoxContainer" unique_id=1353595382]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PanelContainer/MarginContainer/VBoxContainer/ScrollContainer" unique_id=372793261]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 4
 
 [connection signal="pressed" from="PanelContainer/MarginContainer/VBoxContainer/Connect" to="." method="_on_connect_pressed"]
