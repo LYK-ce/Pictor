@@ -9,3 +9,4 @@ signal map_full_received(voxels: Array)
 signal map_delta_received(voxels: Array)
 signal chunk_updated(chunk_x: int, chunk_y: int)
 signal ws_connected
+signal ws_connect_requested(url: String)

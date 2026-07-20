@@ -1,15 +1,18 @@
 extends Control
+## Present by KeJi
+## Date: 2026-07-20
+##
+## WebSocketMenu — Connect 按钮，弹出 CreationMenu
+
+@export var creation_menu_scene: PackedScene
+var _creation_menu: Control = null
 
 
-# Called when the node enters the scene tree for the first time.
-func _ready() -> void:
-	pass # Replace with function body.
-
-
-# Called every frame. 'delta' is the elapsed time since the previous frame.
-func _process(delta: float) -> void:
-	pass
-
-#按下按钮之后，弹出createion menu，只有create menu不在的时候按下才有用
 func _on_connect_pressed() -> void:
-	pass # Replace with function body.
+	if _creation_menu:
+		_creation_menu.queue_free()
+		_creation_menu = null
+		return
+
+	_creation_menu = creation_menu_scene.instantiate()
+	add_child(_creation_menu)

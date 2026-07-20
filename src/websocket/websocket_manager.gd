@@ -9,6 +9,10 @@ extends Node
 var _connections: Dictionary = {}  # String(url) → WebSocketClient
 
 
+func _ready() -> void:
+	EventBus.ws_connect_requested.connect(create_connection)
+
+
 func create_connection(url: String) -> void:
 	if _connections.has(url):
 		printerr("[WS-Mgr] already connected: ", url)
