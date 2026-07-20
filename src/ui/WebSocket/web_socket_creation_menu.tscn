@@ -63,13 +63,13 @@ text = "端口：       "
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="TextEdit" type="TextEdit" parent="Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer2" unique_id=533324364]
+[node name="address" type="TextEdit" parent="Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer2" unique_id=533324364]
 layout_mode = 2
 size_flags_vertical = 3
 placeholder_text = "127.0.0.1"
 emoji_menu_enabled = false
 
-[node name="TextEdit2" type="TextEdit" parent="Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer2" unique_id=1402041264]
+[node name="port" type="TextEdit" parent="Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer2" unique_id=1402041264]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3

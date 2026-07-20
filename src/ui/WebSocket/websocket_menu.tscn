@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bhsl8mnyldejx"]
 
 [ext_resource type="Script" uid="uid://mgvfiw10b8qp" path="res://src/ui/WebSocket/websocket_menu.gd" id="1_2jwkf"]
+[ext_resource type="PackedScene" uid="uid://0u6e3bgotaeb" path="res://src/ui/WebSocket/web_socket_creation_menu.tscn" id="2_nspd6"]
 
 [node name="WebsocketMenu" type="Control" unique_id=313005512]
 layout_mode = 3
@@ -11,6 +12,7 @@ offset_left = -40.0
 offset_bottom = 40.0
 grow_horizontal = 0
 script = ExtResource("1_2jwkf")
+creation_menu_scene = ExtResource("2_nspd6")
 
 [node name="PanelContainer" type="PanelContainer" parent="." unique_id=148020760]
 layout_mode = 1

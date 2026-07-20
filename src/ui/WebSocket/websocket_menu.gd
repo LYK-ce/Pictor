@@ -15,4 +15,4 @@ func _on_connect_pressed() -> void:
 		return
 
 	_creation_menu = creation_menu_scene.instantiate()
-	add_child(_creation_menu)
+	get_parent().add_child(_creation_menu)

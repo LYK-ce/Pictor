@@ -4,8 +4,8 @@ extends Control
 ##
 ## WebSocketCreationMenu — 输入地址端口，emit ws_connect_requested
 
-@onready var address := $Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer/address as LineEdit
-@onready var port := $Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer/port as LineEdit
+@onready var address =$Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer2/address
+@onready var port = $Panel/MarginContainer/VBoxContainer/HBoxContainer/VBoxContainer2/port
 
 
 func _on_button_pressed() -> void:
