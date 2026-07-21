@@ -5,7 +5,7 @@
 class_name CoordUtils
 extends RefCounted
 
-const SCALE := 16.0
+const SCALE := 32.0
 
 
 ## 真实世界 (x, z) 米 → 游戏世界 Vector2
