@@ -35,8 +35,9 @@ func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 			var pos := Vector2i(offset_x + lx, offset_y + ly)
 			if cells[idx] == 1:
 				wall_cells.append(pos)
-			else:
+			elif cells[idx] == 0:
 				ground_cells.append(pos)
+			# 2=未知，不渲染
 
 	if not ground_cells.is_empty():
 		_ground_layer.set_cells_terrain_connect(ground_cells, TERRAIN_SET, TERRAIN_GROUND, true)
