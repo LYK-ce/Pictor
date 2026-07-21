@@ -50,6 +50,10 @@ func _process(delta: float) -> void:
 
 		State.CONNECTED:
 			_peer.poll()
+			if _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+				print("[", vehicle_id, "] client disconnected")
+				_state = State.WAITING
+				return
 			_timer += delta
 			if _timer >= 0.1:  # 10Hz
 				_timer = 0.0
