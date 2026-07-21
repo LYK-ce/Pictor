@@ -92,23 +92,18 @@ func _send_map() -> void:
 	var chunk: ChunkData2D = load("res://Assets/2D/map_chunk_0_0.tres")
 	var cells: PackedByteArray = chunk.cells
 
-	var voxels: Array[Dictionary] = []
+	# 二进制帧: [type:1][chunk_x:4][chunk_y:4][cells:65536]
+	var buf := PackedByteArray()
+	buf.resize(9 + cells.size())
+	buf[0] = 0                  # type = map_full
+	buf.encode_s32(1, 0)         # chunk_x
+	buf.encode_s32(5, 0)         # chunk_y
 	for i in range(cells.size()):
-		if cells[i] == 1:
-			var gx := i % CHUNK_SIZE
-			var gy := i / CHUNK_SIZE
-			voxels.append({
-				"gx": gx, "gy": gy, "gz": 0,
-				"state": 1, "conf": 1.0
-			})
+		buf[9 + i] = cells[i]
 
-	var msg := JSON.stringify({
-		"type": "map_full",
-		"ts": Time.get_unix_time_from_system(),
-		"voxels": voxels
-	})
-	print("[", vehicle_id, "] sending map_full: ", voxels.size(), " cells, ", msg.length(), " bytes")
-	_send(msg)
+	print("[", vehicle_id, "] sending map_full chunk(0,0), ", buf.size(), " bytes")
+	_peer.put_packet(buf)
+	_peer.poll()
 
 
 func _send_random_pose() -> void:

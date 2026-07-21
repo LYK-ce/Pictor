@@ -86,31 +86,25 @@ Chunk 大小：256×256 cell = 128m×128m。
 | `yaw` | f32 | 弧度 | 偏航角 |
 | `vx`, `vy` | f32 | 米/秒 | 2D 速度分量 |
 
-### map_full — 全量地图
+### map_full — 全量地图（二进制帧）
 
-连接建立后发送完整地图。每格 0.5m，`state` 0=可通行, 1=不可通行。
+连接建立后发送完整 Chunk。**使用 WebSocket 二进制帧**，不走 JSON。
 
-```json
-{
-    "type": "map_full",
-    "ts": 1717800000.200,
-    "voxels": [
-        {"gx": 0, "gy": 0, "state": 0},
-        {"gx": 1, "gy": 0, "state": 1}
-    ]
-}
+```
+字节布局:
+  [0]      type:    u8 = 0 (map_full)
+  [1..4]   chunk_x: int32 (big-endian)
+  [5..8]   chunk_y: int32 (big-endian)
+  [9..]    cells:   PackedByteArray, 65536 bytes (256×256)
+
+  总大小: 65545 bytes
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `ts` | f64 | Unix 时间戳 |
-| `voxels` | array | 全量体素列表 |
-| `gx`, `gy` | i32 | 网格坐标 |
-| `state` | u8 | 0=可通行, 1=不可通行 |
+每个 cell: 0=可通行, 1=不可通行，行优先 `index = y * 256 + x`。
 
-### map_delta — 增量地图
+### map_delta — 增量地图（文本帧）
 
-仅发送变化的格子。格式同 `map_full`。
+仅发送变化的格子，JSON 格式。
 
 ---
 

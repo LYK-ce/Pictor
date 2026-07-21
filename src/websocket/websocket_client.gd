@@ -45,8 +45,19 @@ func _read_packets() -> void:
 		var pkt := _ws.get_packet()
 		if pkt.size() == 0:
 			continue
-		var text := pkt.get_string_from_utf8()
-		_on_message(text)
+		if _ws.was_string_packet():
+			var text := pkt.get_string_from_utf8()
+			_on_message(text)
+		else:
+			# 二进制帧（hello 之后才处理）
+			if not _identified:
+				continue
+			match pkt[0]:  # type byte
+				0:  # map_full
+					var chunk_x := pkt.decode_s32(1)
+					var chunk_y := pkt.decode_s32(5)
+					var cells := pkt.slice(9)
+					EventBus.map_full_received.emit(chunk_x, chunk_y, cells)
 
 
 func _connect() -> void:
@@ -105,9 +116,6 @@ func _on_message(text: String) -> void:
 	match msg_type:
 		"pose":
 			EventBus.pose_received.emit(_vehicle_id, data)
-		"map_full":
-			var voxels = data.get("voxels", [])
-			EventBus.map_full_received.emit(voxels)
 		"map_delta":
 			EventBus.map_delta_received.emit(data.get("voxels", []))
 

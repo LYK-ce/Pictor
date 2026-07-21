@@ -18,12 +18,9 @@ func _ready() -> void:
 
 # ─── 全局入口 ─────────────────────────────────────────────────
 
-func set_full(voxels: Array) -> void:
-	print("[MapData2D] set_full: ", voxels.size(), " voxels")
-	var grouped := _group_by_chunk(voxels)
-	for coord in grouped:
-		var cells := _dict_to_packed(grouped[coord], coord)
-		set_chunk_full(coord.x, coord.y, cells)
+func set_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
+	print("[MapData2D] set_full: chunk(", chunk_x, ",", chunk_y, "), ", cells.size(), " cells")
+	set_chunk_full(chunk_x, chunk_y, cells)
 
 
 func set_delta(voxels: Array) -> void:
