@@ -42,6 +42,7 @@ func close_connection(vehicle_id: String) -> void:
 	if ws:
 		ws.queue_free()
 		_vehicles.erase(vehicle_id)
+		EventBus.vehicle_unregistered.emit(vehicle_id)
 
 
 func _on_vehicle_registered(vehicle_id: String, address: String) -> void:
