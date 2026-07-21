@@ -2,10 +2,13 @@ extends Node
 ## Present by KeJi
 ## Date: 2026-07-19
 ##
-## TestWSServer — 测试用 WebSocket Server
-## 连接后发送 map_chunk_0_0.tres 地图，并随机移动小车
+## TestWSServer — 多车测试用 WebSocket Server
+## 连接后发 hello + map_full(可选) + pose(10Hz)
 
-const PORT := 9090
+@export var vehicle_id := ""
+@export var port := 9090
+@export var send_map := false
+
 const CHUNK_SIZE := 256
 
 enum State { WAITING, HANDSHAKING, CONNECTED }
@@ -15,7 +18,6 @@ var _peer: WebSocketPeer = null
 var _x := 5.0
 var _y := 5.0
 var _timer := 0.0
-var _map_sent := false
 
 
 func _ready() -> void:
@@ -24,11 +26,11 @@ func _ready() -> void:
 
 func _start_server() -> void:
 	_server = TCPServer.new()
-	var err := _server.listen(PORT)
+	var err := _server.listen(port)
 	if err != OK:
-		printerr("[TestWS] listen failed: ", err)
+		printerr("[", vehicle_id, "] listen failed: ", err)
 		return
-	print("[TestWS] listening on port ", PORT)
+	print("[", vehicle_id, "] listening on port ", port)
 
 
 func _process(delta: float) -> void:
@@ -40,14 +42,16 @@ func _process(delta: float) -> void:
 			_peer.poll()
 			if _peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
 				_state = State.CONNECTED
-				print("[TestWS] handshake complete, waiting 0.5s...")
+				print("[", vehicle_id, "] handshake complete")
 				await get_tree().create_timer(0.5).timeout
-				_send_map()
+				_send_hello()
+				if send_map:
+					_send_map()
 
 		State.CONNECTED:
 			_peer.poll()
 			_timer += delta
-			if _timer >= 0.5:
+			if _timer >= 0.1:  # 10Hz
 				_timer = 0.0
 				_send_random_pose()
 
@@ -57,17 +61,27 @@ func _try_accept() -> void:
 		return
 	var tcp := _server.take_connection()
 	_peer = WebSocketPeer.new()
-	_peer.outbound_buffer_size = 1 << 22  # 4MB
+	_peer.outbound_buffer_size = 1 << 22
 	_peer.accept_stream(tcp)
 	_state = State.HANDSHAKING
-	print("[TestWS] client connecting, handshaking...")
+	print("[", vehicle_id, "] client connecting...")
 
 
 func _send(msg: String) -> void:
 	var err := _peer.send_text(msg)
 	if err != OK:
-		printerr("[TestWS] send_text failed: ", err)
-	_peer.poll()  # flush
+		printerr("[", vehicle_id, "] send_text failed: ", err)
+	_peer.poll()
+
+
+func _send_hello() -> void:
+	var msg := JSON.stringify({
+		"type": "hello",
+		"vehicle_id": vehicle_id,
+		"address": "ws://127.0.0.1:%d" % port
+	})
+	print("[", vehicle_id, "] sending hello")
+	_send(msg)
 
 
 func _send_map() -> void:
@@ -89,7 +103,7 @@ func _send_map() -> void:
 		"ts": Time.get_unix_time_from_system(),
 		"voxels": voxels
 	})
-	print("[TestWS] sending map_full: ", voxels.size(), " wall cells, ", msg.length(), " bytes")
+	print("[", vehicle_id, "] sending map_full: ", voxels.size(), " cells, ", msg.length(), " bytes")
 	_send(msg)
 
 
