@@ -45,4 +45,10 @@ text = "速度"
 layout_mode = 2
 text = "断开连接"
 
+[node name="TakeControl" type="Button" parent="VBoxContainer" unique_id=515132288]
+layout_mode = 2
+toggle_mode = true
+text = "接管控制"
+
 [connection signal="pressed" from="VBoxContainer/Disconnect" to="." method="_on_disconnect_pressed"]
+[connection signal="toggled" from="VBoxContainer/TakeControl" to="." method="_on_take_control_toggled"]

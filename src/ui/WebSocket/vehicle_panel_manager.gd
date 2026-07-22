@@ -21,17 +21,21 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 		return
 	var panel := vehicle_panel_scene.instantiate()
 	panel.name = vehicle_id
-	panel.clicked.connect(_on_panel_clicked)
+	panel.take_control_toggled.connect(_on_take_control_toggled)
 	add_child(panel)
 	_panels[vehicle_id] = panel
 
 
-func _on_panel_clicked(vehicle_id: String) -> void:
-	print("[PanelManager] panel clicked: ", vehicle_id, " (was: ", _selected_id, ")")
-	if vehicle_id == _selected_id:
-		_selected_id = ""
-	else:
+func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
+	print("[PanelManager] take_control_toggled: ", vehicle_id, " pressed=", pressed, " (was: ", _selected_id, ")")
+	if pressed:
+		# 接管：释放之前的
+		if not _selected_id.is_empty() and _selected_id != vehicle_id:
+			_panels[_selected_id].set_pressed(false)
 		_selected_id = vehicle_id
+	else:
+		# 释放
+		_selected_id = ""
 
 	_update_selection()
 	EventBus.vehicle_control_changed.emit(_selected_id)
