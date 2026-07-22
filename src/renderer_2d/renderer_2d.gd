@@ -16,6 +16,7 @@ var _vehicles: Dictionary = {}  # {vehicle_id → Node2D}
 func _ready() -> void:
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.chunk_updated.connect(_on_chunk_updated)
+	EventBus.cells_changed.connect(_on_cells_changed)
 	EventBus.vehicle_registered.connect(_on_vehicle_registered)
 	EventBus.vehicle_unregistered.connect(_on_vehicle_unregistered)
 
@@ -65,3 +66,7 @@ func _on_chunk_updated(chunk_x: int, chunk_y: int) -> void:
 			2: c2 += 1
 	print("[Renderer2D] chunk_updated: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d] → render" % [chunk_x, chunk_y, cells.size(), c0, c1, c2])
 	_map.render_chunk(chunk_x, chunk_y, cells)
+
+
+func _on_cells_changed(updates: Array) -> void:
+	_map.update_cells(updates)

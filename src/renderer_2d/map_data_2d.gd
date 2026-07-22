@@ -75,14 +75,18 @@ func set_chunk_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 
 func set_chunk_delta(chunk_x: int, chunk_y: int, updates: Array) -> void:
 	var chunk := _get_or_create_chunk(chunk_x, chunk_y)
+	var changed: Array = []
 	for u in updates:
 		var lx: int = u.get("lx", 0)
 		var ly: int = u.get("ly", 0)
+		var state: int = u.get("state", 0)
 		var idx: int = ly * CHUNK_SIZE + lx
 		if idx >= 0 and idx < chunk.cells.size():
-			chunk.cells[idx] = u.get("state", 0)
+			chunk.cells[idx] = state
+			changed.append({"gx": chunk_x * CHUNK_SIZE + lx, "gy": chunk_y * CHUNK_SIZE + ly, "state": state})
+	print("[MapData2D] set_delta: chunk(%d,%d) changed=%d cells" % [chunk_x, chunk_y, changed.size()])
 	# _save_chunk(chunk_x, chunk_y, chunk)
-	EventBus.chunk_updated.emit(chunk_x, chunk_y)
+	EventBus.cells_changed.emit(changed)
 
 
 # ─── 查询 ─────────────────────────────────────────────────────
