@@ -45,9 +45,9 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	if not instance:
 		return
 	var x: float = pose.get("x", 0.0)
-	var z: float = pose.get("z", 0.0)
+	var y: float = pose.get("y", 0.0)
 	var yaw: float = pose.get("yaw", 0.0)
-	instance.position = CoordUtils.real_to_game(x, z)
+	instance.position = CoordUtils.real_to_game(x, y)
 	instance.rotation = yaw
 
 
