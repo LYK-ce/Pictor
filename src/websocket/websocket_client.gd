@@ -57,6 +57,14 @@ func _read_packets() -> void:
 					var chunk_x := pkt.decode_s32(1)
 					var chunk_y := pkt.decode_s32(5)
 					var cells := pkt.slice(9)
+					# DEBUG: 统计 cell 类型分布
+					var c0 := 0; var c1 := 0; var c2 := 0
+					for i in range(cells.size()):
+						match cells[i]:
+							0: c0 += 1
+							1: c1 += 1
+							2: c2 += 1
+					print("[WS] map_full bin: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d]" % [chunk_x, chunk_y, cells.size(), c0, c1, c2])
 					EventBus.map_full_received.emit(chunk_x, chunk_y, cells)
 
 

@@ -17,9 +17,8 @@ const TERRAIN_GROUND := 1
 
 func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 	if cells.size() != CHUNK_SIZE * CHUNK_SIZE:
+		print("[MapContainer2D] render_chunk: chunk(%d,%d) BAD SIZE %d ≠ %d — skipping" % [chunk_x, chunk_y, cells.size(), CHUNK_SIZE * CHUNK_SIZE])
 		return
-
-	print("[MapContainer2D] render_chunk: (%d,%d), %d cells" % [chunk_x, chunk_y, cells.size()])
 
 	_wall_layer.clear()
 
@@ -28,6 +27,7 @@ func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 
 	var wall_cells: Array[Vector2i] = []
 	var ground_cells: Array[Vector2i] = []
+	var unknown := 0
 
 	for ly in range(CHUNK_SIZE):
 		for lx in range(CHUNK_SIZE):
@@ -37,7 +37,10 @@ func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 				wall_cells.append(pos)
 			elif cells[idx] == 0:
 				ground_cells.append(pos)
-			# 2=未知，不渲染
+			else:
+				unknown += 1
+
+	print("[MapContainer2D] render_chunk: chunk(%d,%d) ground=%d wall=%d unknown=%d" % [chunk_x, chunk_y, ground_cells.size(), wall_cells.size(), unknown])
 
 	if not ground_cells.is_empty():
 		_ground_layer.set_cells_terrain_connect(ground_cells, TERRAIN_SET, TERRAIN_GROUND, true)

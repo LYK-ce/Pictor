@@ -19,7 +19,14 @@ func _ready() -> void:
 # ─── 全局入口 ─────────────────────────────────────────────────
 
 func set_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
-	print("[MapData2D] set_full: chunk(", chunk_x, ",", chunk_y, "), ", cells.size(), " cells")
+	# DEBUG
+	var c0 := 0; var c1 := 0; var c2 := 0
+	for i in range(cells.size()):
+		match cells[i]:
+			0: c0 += 1
+			1: c1 += 1
+			2: c2 += 1
+	print("[MapData2D] set_full: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d]" % [chunk_x, chunk_y, cells.size(), c0, c1, c2])
 	set_chunk_full(chunk_x, chunk_y, cells)
 
 

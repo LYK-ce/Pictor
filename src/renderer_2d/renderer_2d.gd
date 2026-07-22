@@ -53,5 +53,15 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 
 func _on_chunk_updated(chunk_x: int, chunk_y: int) -> void:
 	var cells: PackedByteArray = %MapData2D.get_chunk_cells(chunk_x, chunk_y)
-	if not cells.is_empty():
-		_map.render_chunk(chunk_x, chunk_y, cells)
+	if cells.is_empty():
+		print("[Renderer2D] chunk_updated: chunk(%d,%d) EMPTY — skipping" % [chunk_x, chunk_y])
+		return
+	# DEBUG
+	var c0 := 0; var c1 := 0; var c2 := 0
+	for i in range(cells.size()):
+		match cells[i]:
+			0: c0 += 1
+			1: c1 += 1
+			2: c2 += 1
+	print("[Renderer2D] chunk_updated: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d] → render" % [chunk_x, chunk_y, cells.size(), c0, c1, c2])
+	_map.render_chunk(chunk_x, chunk_y, cells)

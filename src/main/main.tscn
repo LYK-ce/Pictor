@@ -17,6 +17,8 @@ texture_filter = 1
 
 [node name="WebSocketManager" parent="." unique_id=99410890 instance=ExtResource("4_ws")]
 
-[node name="WebSocketMenu" parent="." unique_id=739165699 instance=ExtResource("5_menu")]
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="WebSocketMenu" parent="UI" unique_id=739165699 instance=ExtResource("5_menu")]
 
 [node name="ControlMaster" parent="." instance=ExtResource("6_ctrl")]
