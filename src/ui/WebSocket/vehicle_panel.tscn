@@ -2,8 +2,21 @@
 
 [ext_resource type="Script" uid="uid://dr12fimj4x38e" path="res://src/ui/WebSocket/vehicle_panel.gd" id="1_i6pk3"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_f7u7g"]
+bg_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
+
 [node name="Vehicle_Panel" type="PanelContainer" unique_id=1427358211]
+theme_override_styles/panel = SubResource("StyleBoxFlat_f7u7g")
 script = ExtResource("1_i6pk3")
+
+[node name="Control_Area" type="ColorRect" parent="." unique_id=1706397308]
+layout_mode = 2
+color = Color(1, 1, 1, 0)
 
 [node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1682788166]
 layout_mode = 2
@@ -32,4 +45,5 @@ text = "速度"
 layout_mode = 2
 text = "断开连接"
 
+[connection signal="gui_input" from="Control_Area" to="." method="_on_control_area_gui_input"]
 [connection signal="pressed" from="VBoxContainer/Disconnect" to="." method="_on_disconnect_pressed"]

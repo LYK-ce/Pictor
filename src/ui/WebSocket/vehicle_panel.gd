@@ -19,3 +19,7 @@ func Update(vehicle_id: String, position: String, yaw: String, velocity: String)
 
 func _on_disconnect_pressed() -> void:
 	EventBus.ws_disconnect_requested.emit(_id_label.text)
+
+
+func _on_control_area_gui_input(event: InputEvent) -> void:
+	pass # Replace with function body.

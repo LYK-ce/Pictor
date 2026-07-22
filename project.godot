@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="Pictor"
+run/main_scene="uid://j4xey3gnduvd"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
@@ -21,6 +22,7 @@ EventBus="*res://src/event_bus/event_bus.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
 
 [renderer]
 
