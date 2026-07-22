@@ -47,3 +47,7 @@ func _on_control_area_gui_input(event: InputEvent) -> void:
 
 func set_selected(selected: bool) -> void:
 	add_theme_stylebox_override("panel", _style_selected if selected else _style_normal)
+
+
+func _on_take_control_pressed() -> void:
+	pass # Replace with function body.
