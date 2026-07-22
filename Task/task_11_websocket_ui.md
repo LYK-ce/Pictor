@@ -66,3 +66,7 @@ VehiclePanelManager:  _panels:  Dictionary{vehicle_id → VehiclePanel}
 - [x] 3. 更新 WebSocketManager
 - [x] 4. 更新 Renderer2D
 - [x] 5. 更新 VehiclePanelManager
+- [x] 6. map_full 二进制帧重构 (2026-07-21)
+- [x] 7. 3 车测试验证
+- [x] 8. 断开/重连链路修复
+- [x] 9. map_container_2d 跳过未知格子
