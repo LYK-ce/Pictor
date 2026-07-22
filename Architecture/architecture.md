@@ -49,12 +49,10 @@ src/
 │   ├── chunk_data_2d.gd             ← Chunk Resource 类型
 │   ├── map_container_2d.gd          ← TileMapLayer 渲染
 │   ├── map_container_2d.tscn
-│   ├── vehicle_marker_2d.gd         ← 车辆三角形标记 + Camera2D
-│   ├── vehicle_marker_2d.tscn
 │   ├── path_line_2d.gd              ← 路径线条（Line2D）
 │   ├── path_line_2d.tscn
 │   └── Vehicle/
-│       └── vehicle_2d.tscn          ← 车辆场景（预挂 Camera2D + _draw 三角形）
+│       └── vehicle_2d.tscn          ← 车辆场景（AnimatedSprite2D + Camera2D）
 ├── renderer_3d/
 │   ├── renderer_3d.gd               ← 3D 渲染总管（未挂载，信号待修复）
 │   ├── renderer_3d.tscn
