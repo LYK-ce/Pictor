@@ -21,21 +21,12 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 		return
 	var panel := vehicle_panel_scene.instantiate()
 	panel.name = vehicle_id
-	var ca := panel.get_node("Control_Area") as ColorRect
-	ca.mouse_filter = Control.MOUSE_FILTER_STOP
-	ca.gui_input.connect(_on_panel_gui_input.bind(vehicle_id))
+	panel.clicked.connect(_on_panel_clicked)
 	add_child(panel)
 	_panels[vehicle_id] = panel
 
 
-func _on_panel_gui_input(event: InputEvent, vehicle_id: String) -> void:
-	if not (event is InputEventMouseButton):
-		return
-	var mb := event as InputEventMouseButton
-	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
-		return
-
-	# 切换逻辑：点击同一辆车 → 取消选中；否则切换
+func _on_panel_clicked(vehicle_id: String) -> void:
 	if vehicle_id == _selected_id:
 		_selected_id = ""
 	else:
