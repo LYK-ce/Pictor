@@ -27,6 +27,7 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 
 
 func _on_panel_clicked(vehicle_id: String) -> void:
+	print("[PanelManager] panel clicked: ", vehicle_id, " (was: ", _selected_id, ")")
 	if vehicle_id == _selected_id:
 		_selected_id = ""
 	else:

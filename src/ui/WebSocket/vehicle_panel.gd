@@ -41,6 +41,7 @@ func _on_control_area_gui_input(event: InputEvent) -> void:
 		return
 	var mb := event as InputEventMouseButton
 	if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+		print("[VehiclePanel] clicked: ", _id_label.text)
 		clicked.emit(_id_label.text)
 
 
