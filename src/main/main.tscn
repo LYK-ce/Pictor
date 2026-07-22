@@ -7,7 +7,7 @@
 [ext_resource type="PackedScene" uid="uid://bhsl8mnyldejx" path="res://src/ui/WebSocket/websocket_menu.tscn" id="5_menu"]
 [ext_resource type="PackedScene" path="res://src/control/control.tscn" id="6_ctrl"]
 [ext_resource type="PackedScene" path="res://src/camera/camera_2d.tscn" id="7_cam"]
-[ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button.tscn" id="7_frqgp"]
+[ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button_list.tscn" id="7_frqgp"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")

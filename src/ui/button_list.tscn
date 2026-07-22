@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://52ibu10nqcwt"]
+
+[ext_resource type="Script" uid="uid://bju0oxf1t43dp" path="res://src/ui/button_list.gd" id="1_sibly"]
+[ext_resource type="Texture2D" uid="uid://b30p7fum56048" path="res://Assets/UI/lock.svg" id="2_t1f1t"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1oou7"]
+
+[node name="Button_List" type="PanelContainer" unique_id=471177575]
+anchors_preset = -1
+anchor_left = 0.7
+anchor_right = 0.9
+anchor_bottom = 0.1
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_1oou7")
+script = ExtResource("1_sibly")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=779194128]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer" unique_id=2020328250]
+layout_mode = 2
+
+[node name="Control" type="Control" parent="MarginContainer/HBoxContainer" unique_id=935455940]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Control2" type="Control" parent="MarginContainer/HBoxContainer" unique_id=1383330377]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Control3" type="Control" parent="MarginContainer/HBoxContainer" unique_id=1149723127]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Control4" type="Control" parent="MarginContainer/HBoxContainer" unique_id=2103216025]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Lock_Camera" type="TextureButton" parent="MarginContainer/HBoxContainer" unique_id=1081828788]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 3
+texture_normal = ExtResource("2_t1f1t")
+stretch_mode = 5
