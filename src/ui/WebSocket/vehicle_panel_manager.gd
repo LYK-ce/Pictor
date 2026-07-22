@@ -21,7 +21,9 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 		return
 	var panel := vehicle_panel_scene.instantiate()
 	panel.name = vehicle_id
-	panel.get_node("Control_Area").gui_input.connect(_on_panel_gui_input.bind(vehicle_id))
+	var ca := panel.get_node("Control_Area") as ColorRect
+	ca.mouse_filter = Control.MOUSE_FILTER_STOP
+	ca.gui_input.connect(_on_panel_gui_input.bind(vehicle_id))
 	add_child(panel)
 	_panels[vehicle_id] = panel
 
