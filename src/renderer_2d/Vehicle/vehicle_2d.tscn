@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://uno5uh8ep1ik"]
 
+[ext_resource type="Script" path="res://src/renderer_2d/Vehicle/vehicle_2d.gd" id="1_vehicle_gd"]
+
 [ext_resource type="Texture2D" uid="uid://bmmjk1k0bskso" path="res://Assets/2D/Vehicle/Car_classic_blue_complete_.png" id="1_06gi5"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_5txsu"]
@@ -53,6 +55,7 @@ animations = [{
 }]
 
 [node name="Vehicle2D" type="Node2D" unique_id=1591744708]
+script = ExtResource("1_vehicle_gd")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1395880036]
 texture_filter = 1
@@ -60,6 +63,3 @@ scale = Vector2(0.5, 0.5)
 sprite_frames = SubResource("SpriteFrames_1oou7")
 autoplay = "default"
 frame_progress = 0.08163812
-
-[node name="Camera2D" type="Camera2D" parent="."]
-enabled = true

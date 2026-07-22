@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/camera/camera_2d.gd" id="1_camera_gd"]
+
+[node name="Camera2D" type="Camera2D"]
+script = ExtResource("1_camera_gd")
+position = Vector2(0, 0)
+zoom = Vector2(1, 1)
+enabled = true

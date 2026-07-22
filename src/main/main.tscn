@@ -6,9 +6,12 @@
 [ext_resource type="PackedScene" uid="uid://e00fqtu68eno" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
 [ext_resource type="PackedScene" uid="uid://bhsl8mnyldejx" path="res://src/ui/WebSocket/websocket_menu.tscn" id="5_menu"]
 [ext_resource type="PackedScene" path="res://src/control/control.tscn" id="6_ctrl"]
+[ext_resource type="PackedScene" path="res://src/camera/camera_2d.tscn" id="7_cam"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
+
+[node name="Camera2D" parent="." instance=ExtResource("7_cam")]
 
 [node name="MapData2D" parent="." unique_id=714336350 instance=ExtResource("3_md")]
 
