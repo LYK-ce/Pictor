@@ -69,7 +69,7 @@ func _dict_to_packed(updates: Array, coord: Vector2i) -> PackedByteArray:
 func set_chunk_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 	var chunk := _get_or_create_chunk(chunk_x, chunk_y)
 	chunk.cells = cells
-	_save_chunk(chunk_x, chunk_y, chunk)
+	# _save_chunk(chunk_x, chunk_y, chunk)
 	EventBus.chunk_updated.emit(chunk_x, chunk_y)
 
 
@@ -81,7 +81,7 @@ func set_chunk_delta(chunk_x: int, chunk_y: int, updates: Array) -> void:
 		var idx: int = ly * CHUNK_SIZE + lx
 		if idx >= 0 and idx < chunk.cells.size():
 			chunk.cells[idx] = u.get("state", 0)
-	_save_chunk(chunk_x, chunk_y, chunk)
+	# _save_chunk(chunk_x, chunk_y, chunk)
 	EventBus.chunk_updated.emit(chunk_x, chunk_y)
 
 
