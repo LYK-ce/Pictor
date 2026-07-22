@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" path="res://src/renderer_2d/map_data_2d.tscn" id="3_md"]
 [ext_resource type="PackedScene" uid="uid://e00fqtu68eno" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
 [ext_resource type="PackedScene" uid="uid://bhsl8mnyldejx" path="res://src/ui/WebSocket/websocket_menu.tscn" id="5_menu"]
+[ext_resource type="PackedScene" path="res://src/control/control.tscn" id="6_ctrl"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
@@ -17,3 +18,5 @@ texture_filter = 1
 [node name="WebSocketManager" parent="." unique_id=99410890 instance=ExtResource("4_ws")]
 
 [node name="WebSocketMenu" parent="." unique_id=739165699 instance=ExtResource("5_menu")]
+
+[node name="ControlMaster" parent="." instance=ExtResource("6_ctrl")]

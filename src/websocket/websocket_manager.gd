@@ -13,6 +13,7 @@ func _ready() -> void:
 	EventBus.ws_connect_requested.connect(create_connection)
 	EventBus.ws_disconnect_requested.connect(close_connection)
 	EventBus.vehicle_registered.connect(_on_vehicle_registered)
+	EventBus.cmd_send.connect(_on_cmd_send)
 
 
 func create_connection(url: String) -> void:
@@ -52,6 +53,12 @@ func _on_vehicle_registered(vehicle_id: String, address: String) -> void:
 	_vehicles.erase(address)
 	_vehicles[vehicle_id] = ws
 	print("[WS-Mgr] registered: ", vehicle_id, " @ ", address)
+
+
+func _on_cmd_send(vehicle_id: String, cmd: Dictionary) -> void:
+	var ws: Node = _vehicles.get(vehicle_id)
+	if ws:
+		ws.send(JSON.stringify(cmd))
 
 
 func get_vehicles() -> Array[String]:

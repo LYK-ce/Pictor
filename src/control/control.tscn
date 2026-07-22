@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/control/control_master.gd" id="1_cm"]
+[ext_resource type="PackedScene" path="res://src/control/input_handler.tscn" id="2_ih"]
+
+[node name="ControlMaster" type="Node"]
+script = ExtResource("1_cm")
+
+[node name="InputHandler" parent="." instance=ExtResource("2_ih")]

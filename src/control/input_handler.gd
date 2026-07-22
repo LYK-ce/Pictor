@@ -1,9 +1,11 @@
 extends Node
-## Present by KeJi
+## Presented by KeJi
 ## Date: 2026-06-08
 ##
-## InputHandler — 键盘输入 → cmd 消息
-## 捕获 WASD / Space，通过 EventBus 发送 cmd 指令。
+## InputHandler — 键盘输入 → cmd 指令
+## 捕获 WASD / Space，通过内部信号 ctrl_input 发送 cmd 指令。
+
+signal ctrl_input(cmd: Dictionary)
 
 const _KEY_MAP := {
 	KEY_W: "forward",
@@ -25,12 +27,7 @@ func _input(event: InputEvent) -> void:
 	if not _KEY_MAP.has(key_event.keycode):
 		return
 
-	# 只响应 press，松手发 stop
 	if key_event.pressed:
-		EventBus.ctrl_send.emit(_make_cmd(_KEY_MAP[key_event.keycode]))
+		ctrl_input.emit({"cmd": _KEY_MAP[key_event.keycode]})
 	else:
-		EventBus.ctrl_send.emit(_make_cmd("stop"))
-
-
-func _make_cmd(cmd: String) -> Dictionary:
-	return {"cmd": cmd}
+		ctrl_input.emit({"cmd": "stop"})
