@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://0u6e3bgotaeb" path="res://src/ui/WebSocket/web_socket_creation_menu.tscn" id="2_nspd6"]
 [ext_resource type="PackedScene" uid="uid://efvoq3fxd1ha" path="res://src/ui/WebSocket/vehicle_panel.tscn" id="3_h0dak"]
 [ext_resource type="Script" uid="uid://civi72laihn3s" path="res://src/ui/WebSocket/vehicle_panel_manager.gd" id="4_7qmu0"]
+[ext_resource type="Resource" uid="uid://lgqkjwhvgs1f" path="res://src/app_state/app_state.tres" id="5_p0bfi"]
 
 [node name="WebsocketMenu" type="Control" unique_id=313005512]
 layout_mode = 3
@@ -49,5 +50,6 @@ size_flags_vertical = 3
 theme_override_constants/separation = 4
 script = ExtResource("4_7qmu0")
 vehicle_panel_scene = ExtResource("3_h0dak")
+app_state = ExtResource("5_p0bfi")
 
 [connection signal="pressed" from="PanelContainer/MarginContainer/VBoxContainer/Connect" to="." method="_on_connect_pressed"]

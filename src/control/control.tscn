@@ -1,9 +1,11 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://g7bchdk3ykyy"]
 
-[ext_resource type="Script" path="res://src/control/control_master.gd" id="1_cm"]
+[ext_resource type="Script" uid="uid://b0gayeddd3tgr" path="res://src/control/control_master.gd" id="1_cm"]
+[ext_resource type="Resource" uid="uid://lgqkjwhvgs1f" path="res://src/app_state/app_state.tres" id="2_2pep6"]
 [ext_resource type="PackedScene" path="res://src/control/input_handler.tscn" id="2_ih"]
 
-[node name="ControlMaster" type="Node"]
+[node name="ControlMaster" type="Node" unique_id=1942558534]
 script = ExtResource("1_cm")
+app_state = ExtResource("2_2pep6")
 
-[node name="InputHandler" parent="." instance=ExtResource("2_ih")]
+[node name="InputHandler" parent="." unique_id=1109735186 instance=ExtResource("2_ih")]

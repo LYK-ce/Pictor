@@ -104,7 +104,7 @@ func _Middle_Drag(event: InputEvent) -> void:
 			_is_dragging = false
 
 	if event is InputEventMouseMotion and _is_dragging:
-		var delta := event.position - _drag_start_mouse
+		var delta = event.position - _drag_start_mouse
 		position = _drag_start_camera - delta / zoom
 
 
