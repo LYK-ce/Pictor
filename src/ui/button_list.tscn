@@ -47,3 +47,5 @@ layout_mode = 2
 size_flags_horizontal = 3
 texture_normal = ExtResource("2_t1f1t")
 stretch_mode = 5
+
+[connection signal="pressed" from="MarginContainer/HBoxContainer/Lock_Camera" to="." method="_on_lock_camera_pressed"]
