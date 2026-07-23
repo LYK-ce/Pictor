@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bju0oxf1t43dp" path="res://src/ui/button_list.gd" id="1_sibly"]
 [ext_resource type="Texture2D" uid="uid://b30p7fum56048" path="res://Assets/UI/lock.svg" id="2_t1f1t"]
+[ext_resource type="Texture2D" uid="uid://cbab1hrr4ilkj" path="res://Assets/UI/flag.svg" id="3_eawer"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1oou7"]
 
@@ -24,6 +25,7 @@ theme_override_constants/margin_bottom = 10
 
 [node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer" unique_id=2020328250]
 layout_mode = 2
+theme_override_constants/separation = 12
 
 [node name="Control" type="Control" parent="MarginContainer/HBoxContainer" unique_id=935455940]
 layout_mode = 2
@@ -37,10 +39,6 @@ size_flags_horizontal = 3
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Control4" type="Control" parent="MarginContainer/HBoxContainer" unique_id=2103216025]
-layout_mode = 2
-size_flags_horizontal = 3
-
 [node name="Lock_Camera" type="TextureButton" parent="MarginContainer/HBoxContainer" unique_id=1081828788]
 texture_filter = 1
 layout_mode = 2
@@ -48,4 +46,12 @@ size_flags_horizontal = 3
 texture_normal = ExtResource("2_t1f1t")
 stretch_mode = 5
 
+[node name="Goto" type="TextureButton" parent="MarginContainer/HBoxContainer" unique_id=1741405652]
+layout_mode = 2
+size_flags_horizontal = 3
+texture_normal = ExtResource("3_eawer")
+texture_pressed = ExtResource("3_eawer")
+stretch_mode = 5
+
 [connection signal="pressed" from="MarginContainer/HBoxContainer/Lock_Camera" to="." method="_on_lock_camera_pressed"]
+[connection signal="pressed" from="MarginContainer/HBoxContainer/Goto" to="." method="_on_goto_pressed"]
