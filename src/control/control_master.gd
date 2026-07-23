@@ -5,6 +5,8 @@ extends Node
 ## ControlMaster — 控制总管
 ## 监听选中状态变化，接收 InputHandler 的键盘输入，通过 EventBus 下发 cmd 到 WebSocketManager。
 
+@export var app_state: AppStateResource
+
 var _selected_id := ""
 
 

@@ -1,10 +1,14 @@
 ## Presented by KeJi
-## Date ： 2026-07-22
+## Date ： 2026-07-23
 ##
 ## Camera2D — 独立摄像机组件
 ## 控制：中键拖拽 + 边缘滚动 + 滚轮缩放
+## 跟车：Lock Camera 按钮触发，监听 pose_received 平滑跟随
 
 extends Camera2D
+
+## 共享状态
+@export var app_state: AppStateResource
 
 ## 边缘滚动触发区宽度（像素）
 @export var edge_margin := 20.0
@@ -24,14 +28,64 @@ var _is_dragging := false
 var _drag_start_mouse := Vector2.ZERO
 var _drag_start_camera := Vector2.ZERO
 
+## 跟车模式
+var _following := false
+var _target_position := Vector2.ZERO
+
+
+func _ready() -> void:
+	EventBus.camera_follow_requested.connect(_on_camera_follow_requested)
+	EventBus.pose_received.connect(_on_pose)
+	EventBus.vehicle_unregistered.connect(_on_vehicle_unregistered)
+
 
 func _process(delta: float) -> void:
-	_Edge_Scroll(delta)
+	if _following:
+		position = position.lerp(_target_position, 0.3)
+	else:
+		_Edge_Scroll(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _following:
+		_Zoom(event)
+		return
 	_Middle_Drag(event)
 	_Zoom(event)
+
+
+## 跟车请求 —— Lock Camera 按钮触发
+func _on_camera_follow_requested() -> void:
+	_following = not _following
+	if _following:
+		_target_position = position
+		print("[Camera] follow started")
+	else:
+		print("[Camera] follow stopped")
+
+
+## 车辆位姿更新 —— 更新跟车目标位置
+func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
+	if not _following:
+		return
+	if not app_state:
+		return
+	if vehicle_id != app_state.selected_id:
+		return
+	var x: float = pose.get("x", 0.0)
+	var y: float = pose.get("y", 0.0)
+	_target_position = CoordUtils.real_to_game(x, y)
+
+
+## 车辆断开 —— 自动退出跟车
+func _on_vehicle_unregistered(vehicle_id: String) -> void:
+	if not _following:
+		return
+	if not app_state:
+		return
+	if vehicle_id == app_state.selected_id:
+		_following = false
+		print("[Camera] follow stopped (vehicle disconnected)")
 
 
 ## 鼠标中键拖拽 —— "抓住地图拖动"
@@ -50,7 +104,7 @@ func _Middle_Drag(event: InputEvent) -> void:
 			_is_dragging = false
 
 	if event is InputEventMouseMotion and _is_dragging:
-		var delta = event.position - _drag_start_mouse
+		var delta := event.position - _drag_start_mouse
 		position = _drag_start_camera - delta / zoom
 
 

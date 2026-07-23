@@ -5,6 +5,7 @@ extends VBoxContainer
 ## VehiclePanelManager — 管理所有车辆信息面板，以及选中状态
 
 @export var vehicle_panel_scene: PackedScene
+@export var app_state: AppStateResource
 
 var _panels: Dictionary = {}  # {vehicle_id → Panel}
 var _selected_id := ""
@@ -38,6 +39,8 @@ func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
 		_selected_id = ""
 
 	_update_selection()
+	if app_state:
+		app_state.selected_id = _selected_id
 	EventBus.vehicle_control_changed.emit(_selected_id)
 
 
@@ -48,6 +51,8 @@ func _on_vehicle_unregistered(vehicle_id: String) -> void:
 		_panels.erase(vehicle_id)
 	if vehicle_id == _selected_id:
 		_selected_id = ""
+		if app_state:
+			app_state.selected_id = ""
 		EventBus.vehicle_control_changed.emit("")
 
 

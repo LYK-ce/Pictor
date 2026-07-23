@@ -16,3 +16,4 @@ signal vehicle_unregistered(vehicle_id: String)
 signal vehicle_control_changed(vehicle_id: String)
 signal cmd_send(vehicle_id: String, cmd: Dictionary)
 signal cells_changed(updates: Array)
+signal camera_follow_requested
