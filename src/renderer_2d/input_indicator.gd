@@ -62,9 +62,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var real := CoordUtils.tile_to_real(tile.x, tile.y)
 
 	EventBus.cmd_send.emit(app_state.selected_id, {
-		"cmd": "goto",
-		"x": real.x,
-		"y": real.y
+		"cmd": "auto",
+		"action": "push",
+		"missions": [{"type": "goto", "x": real.x, "y": real.y}]
 	})
 
 	app_state.mode = AppStateResource.Mode.NONE

@@ -176,20 +176,34 @@ func _Read_Incoming() -> void:
 		var data = json.get_data()
 		if not data is Dictionary:
 			continue
-
 		var cmd: String = data.get("cmd", "")
 		match cmd:
-			"goto":
-				var tx: float = data.get("x", 0.0)
-				var ty: float = data.get("y", 0.0)
-				print("[", vehicle_id, "] received goto: (", tx, ", ", ty, ")")
-				# 简单模拟：小车转向目标方向移动
-				_yaw = lerp_angle(_yaw, atan2(ty - _y, tx - _x), 0.5)
-				_vx = cos(_yaw) * MAX_SPEED * 0.5
-				_vy = sin(_yaw) * MAX_SPEED * 0.5
-			"stop":
-				_vx = 0.0
-				_vy = 0.0
-				print("[", vehicle_id, "] received stop")
-			"forward", "backward", "spin_left", "spin_right":
-				print("[", vehicle_id, "] received cmd: ", cmd)
+			"mode":
+				print("[", vehicle_id, "] received mode: ", data.get("action", ""))
+			"manual":
+				var action: String = data.get("action", "")
+				match action:
+					"stop":
+						_vx = 0.0
+						_vy = 0.0
+						print("[", vehicle_id, "] received stop")
+					_:
+						print("[", vehicle_id, "] received manual: ", action)
+			"auto":
+				var action: String = data.get("action", "")
+				match action:
+					"push":
+						var missions: Array = data.get("missions", [])
+						if missions.size() > 0:
+							var m = missions[0]
+							if m.get("type", "") == "goto":
+								var tx: float = m.get("x", 0.0)
+								var ty: float = m.get("y", 0.0)
+								print("[", vehicle_id, "] received goto: (", tx, ", ", ty, ")")
+								_yaw = lerp_angle(_yaw, atan2(ty - _y, tx - _x), 0.5)
+								_vx = cos(_yaw) * MAX_SPEED * 0.5
+								_vy = sin(_yaw) * MAX_SPEED * 0.5
+					"cancel":
+						_vx = 0.0
+						_vy = 0.0
+						print("[", vehicle_id, "] received cancel")

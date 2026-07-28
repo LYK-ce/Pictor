@@ -126,37 +126,56 @@ Chunk 大小：256×256 cell = 128m×128m。
 
 ## 下行：PC → 小车
 
-### cmd — 实时控制命令
+下行命令分三层：`mode` 控制模式切换，`manual` 在手动模式下控制，`auto` 在自动模式下下发任务。
+
+### mode — 模式控制
 
 ```json
-{
-    "cmd": "forward"
-}
+{"cmd": "mode", "action": "switch_to_auto"}
 ```
 
-| 命令 | 说明 |
+| action | 说明 |
 |------|------|
-| `forward` | 前进 |
-| `backward` | 后退 |
-| `spin_left` | 左旋 |
-| `spin_right` | 右旋 |
-| `stop` | 停止 |
+| `switch_to_manual` | 切换到手动模式 |
+| `switch_to_auto` | 切换到自动模式 |
 
-### goto — 导航目标点
+模式切换时小车自动停车。
+
+### manual — 手动控制命令
 
 ```json
-{
-    "cmd": "goto",
-    "x": 10.5,
-    "y": 3.2
-}
+{"cmd": "manual", "action": "forward", "speed": 50}
 ```
 
-| 字段 | 类型 | 单位 | 说明 |
-|------|------|------|------|
-| `cmd` | string | — | 固定值 `"goto"` |
-| `x` | f32 | 米 | 目标点真实世界 X 坐标 |
-| `y` | f32 | 米 | 目标点真实世界 Y 坐标 |
+| action | speed | 说明 |
+|------|------|------|
+| `forward` | 0-100 | 前进 |
+| `backward` | 0-100 | 后退 |
+| `spin_left` | 0-100 | 左旋 |
+| `spin_right` | 0-100 | 右旋 |
+| `stop` | — | 停车 |
+| `beep` | duration (ms) | 蜂鸣 |
+
+仅在 Manual 模式下有效，Auto 模式下忽略。
+
+### auto — 自动任务
+
+```json
+{"cmd": "auto", "action": "push", "missions": [
+    {"type": "goto", "x": 10.5, "y": 3.2}
+]}
+```
+
+| action | 说明 |
+|------|------|
+| `push` | 追加任务到队列 |
+| `cancel` | 清空队列并停车 |
+
+| mission type | 字段 | 说明 |
+|------|------|------|
+| `goto` | `x`, `y` (f32, 米) | 导航到目标点 |
+
+仅在 Auto 模式下有效。
 
 ---
 
@@ -165,8 +184,8 @@ Chunk 大小：256×256 cell = 128m×128m。
 ```
 上行 (小车 → PC)          下行 (PC → 小车)
 ─────────────────         ─────────────────
-hello                      cmd
-pose                       goto
-map_full
+hello                      mode
+pose                       manual
+map_full                   auto
 map_delta
 ```
