@@ -1,9 +1,8 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://bhw00pp3bnwb4"]
 
-[ext_resource type="Script" path="res://src/camera/camera_2d.gd" id="1_camera_gd"]
+[ext_resource type="Script" uid="uid://7nkamhxp67im" path="res://src/camera/camera_2d.gd" id="1_camera_gd"]
+[ext_resource type="Resource" uid="uid://lgqkjwhvgs1f" path="res://src/app_state/app_state.tres" id="2_xyfg8"]
 
-[node name="Camera2D" type="Camera2D"]
+[node name="Camera2D" type="Camera2D" unique_id=2128902849]
 script = ExtResource("1_camera_gd")
-position = Vector2(0, 0)
-zoom = Vector2(1, 1)
-enabled = true
+app_state = ExtResource("2_xyfg8")

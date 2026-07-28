@@ -120,7 +120,7 @@ func _on_message(text: String) -> void:
 	if not _identified:
 		return
 
-	print("[WS] msg: ", msg_type, " from ", _vehicle_id)
+	#print("[WS] msg: ", msg_type, " from ", _vehicle_id)
 	match msg_type:
 		"pose":
 			EventBus.pose_received.emit(_vehicle_id, data)

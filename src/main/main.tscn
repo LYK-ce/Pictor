@@ -2,19 +2,19 @@
 
 [ext_resource type="Script" uid="uid://dbtw7ka04tcgy" path="res://src/main/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
-[ext_resource type="Resource" uid="uid://lgqkjwhvgs1f" path="res://src/app_state/app_state.tres" id="3_2nke2"]
 [ext_resource type="PackedScene" path="res://src/renderer_2d/map_data_2d.tscn" id="3_md"]
 [ext_resource type="PackedScene" uid="uid://e00fqtu68eno" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
 [ext_resource type="PackedScene" uid="uid://bhsl8mnyldejx" path="res://src/ui/WebSocket/websocket_menu.tscn" id="5_menu"]
 [ext_resource type="PackedScene" uid="uid://g7bchdk3ykyy" path="res://src/control/control.tscn" id="6_ctrl"]
-[ext_resource type="PackedScene" path="res://src/camera/camera_2d.tscn" id="7_cam"]
+[ext_resource type="PackedScene" uid="uid://bhw00pp3bnwb4" path="res://src/camera/camera_2d.tscn" id="7_cam"]
 [ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button_list.tscn" id="7_frqgp"]
+[ext_resource type="PackedScene" path="res://src/test/test_ws_server.tscn" id="10_erw1m"]
+[ext_resource type="Resource" path="res://Assets/2D/map_chunk_0_0.tres" id="11_w0wra"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
 
 [node name="Camera2D" parent="." unique_id=1634936560 instance=ExtResource("7_cam")]
-app_state = ExtResource("3_2nke2")
 
 [node name="MapData2D" parent="." unique_id=714336350 instance=ExtResource("3_md")]
 
@@ -30,3 +30,7 @@ texture_filter = 1
 [node name="Button" parent="UI" unique_id=471177575 instance=ExtResource("7_frqgp")]
 
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
+
+[node name="TestWSServer" parent="." unique_id=277784559 instance=ExtResource("10_erw1m")]
+send_map = true
+map_chunk = ExtResource("11_w0wra")

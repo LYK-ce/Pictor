@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://52ibu10nqcwt"]
 
 [ext_resource type="Script" uid="uid://bju0oxf1t43dp" path="res://src/ui/button_list.gd" id="1_sibly"]
+[ext_resource type="Resource" uid="uid://lgqkjwhvgs1f" path="res://src/app_state/app_state.tres" id="2_ifya6"]
 [ext_resource type="Texture2D" uid="uid://b30p7fum56048" path="res://Assets/UI/lock.svg" id="2_t1f1t"]
 [ext_resource type="Texture2D" uid="uid://cbab1hrr4ilkj" path="res://Assets/UI/flag.svg" id="3_eawer"]
 
@@ -15,6 +16,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_1oou7")
 script = ExtResource("1_sibly")
+app_state = ExtResource("2_ifya6")
 
 [node name="MarginContainer" type="MarginContainer" parent="." unique_id=779194128]
 layout_mode = 2

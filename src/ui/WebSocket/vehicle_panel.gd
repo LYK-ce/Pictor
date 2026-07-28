@@ -10,7 +10,7 @@ signal take_control_toggled(vehicle_id: String, pressed: bool)
 @onready var _pose_label := $VBoxContainer/Pose as Label
 @onready var _pos_label := $VBoxContainer/Position as Label
 @onready var _vel_label := $VBoxContainer/Velocity as Label
-@onready var _btn_take := %TakeControl as Button
+@onready var _btn_take := $VBoxContainer/TakeControl as Button
 
 var _style_normal: StyleBoxFlat
 var _style_selected: StyleBoxFlat
@@ -44,3 +44,7 @@ func set_selected(selected: bool) -> void:
 
 func set_pressed(pressed: bool) -> void:
 	_btn_take.set_pressed_no_signal(pressed)
+
+
+func _on_manual_toggled(toggled_on: bool) -> void:
+	pass # Replace with function body.

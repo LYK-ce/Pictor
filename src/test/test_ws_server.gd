@@ -9,7 +9,7 @@
 extends Node
 
 ## 车辆标识，hello 包中发送
-@export var vehicle_id := ""
+@export var vehicle_id := "test"
 
 ## 监听端口
 @export var port := 9090
@@ -44,7 +44,7 @@ var _vy := 0.0
 var _yaw := 0.0
 
 # 模式
-var _op_mode := OpMode.MANUAL
+var _op_mode := OpMode.AUTO
 var _exec_state := ExecState.IDLE
 var _goal_x := 0.0
 var _goal_y := 0.0
@@ -204,11 +204,15 @@ func _Read_Incoming() -> void:
 			continue
 
 		var cmd: String = data.get("cmd", "")
+		print(cmd)
 		match cmd:
 			"mode":
+				print(data)
 				_Handle_Mode(data.get("action", ""))
 			"manual":
+			
 				if _op_mode == OpMode.MANUAL:
+					
 					_Handle_Manual(data.get("action", ""), data.get("speed", 0))
 			"auto":
 				if _op_mode == OpMode.AUTO:
@@ -221,14 +225,17 @@ func _Handle_Mode(action: String) -> void:
 			_vx = 0.0
 			_vy = 0.0
 			_op_mode = OpMode.AUTO
+			print('switch to auto')
 		"switch_to_manual":
 			_vx = 0.0
 			_vy = 0.0
 			_op_mode = OpMode.MANUAL
+			print('switch to manual')
 			_exec_state = ExecState.IDLE
 
 
 func _Handle_Manual(action: String, speed: int) -> void:
+	print(action)
 	match action:
 		"forward":
 			_vx = cos(_yaw) * MOVE_SPEED
