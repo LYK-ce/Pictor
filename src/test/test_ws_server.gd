@@ -1,8 +1,9 @@
 ## Presented by KeJi
-## Date ： 2026-07-22
+## Date ： 2026-07-28
 ##
 ## TestWSServer — 多车测试用 WebSocket Server
 ## 连接后发 hello + map_full(可选) + pose(10Hz)
+## 接收下行 cmd（goto/stop/forward/backward 等）
 ## 使用时手动挂载到场景中，每车一个实例
 
 extends Node
@@ -77,6 +78,7 @@ func _process(delta: float) -> void:
 			if _timer >= 0.1:  # 10Hz
 				_timer = 0.0
 				_Send_Random_Pose()
+			_Read_Incoming()
 
 
 func _Try_Accept() -> void:
@@ -158,3 +160,36 @@ func _Send_Random_Pose() -> void:
 		"vx": _vx, "vy": _vy
 	})
 	_Send(msg)
+
+
+func _Read_Incoming() -> void:
+	while _peer.get_available_packet_count() > 0:
+		var pkt := _peer.get_packet()
+		if pkt.size() == 0 or not _peer.was_string_packet():
+			continue
+
+		var text := pkt.get_string_from_utf8()
+		var json := JSON.new()
+		if json.parse(text) != OK:
+			continue
+
+		var data = json.get_data()
+		if not data is Dictionary:
+			continue
+
+		var cmd: String = data.get("cmd", "")
+		match cmd:
+			"goto":
+				var tx: float = data.get("x", 0.0)
+				var ty: float = data.get("y", 0.0)
+				print("[", vehicle_id, "] received goto: (", tx, ", ", ty, ")")
+				# 简单模拟：小车转向目标方向移动
+				_yaw = lerp_angle(_yaw, atan2(ty - _y, tx - _x), 0.5)
+				_vx = cos(_yaw) * MAX_SPEED * 0.5
+				_vy = sin(_yaw) * MAX_SPEED * 0.5
+			"stop":
+				_vx = 0.0
+				_vy = 0.0
+				print("[", vehicle_id, "] received stop")
+			"forward", "backward", "spin_left", "spin_right":
+				print("[", vehicle_id, "] received cmd: ", cmd)
