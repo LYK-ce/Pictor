@@ -10,10 +10,14 @@ extends Resource
 
 enum Mode { NONE, FOLLOW, GOTO }
 
-## 当前选中的车辆 ID，空字符串 = 无选中
-var selected_id := ""
+## 当前选中的车辆 ID，空字符串 = 无选中，变化时 emit selection_changed
+var selected_id := "":
+	set(value):
+		if selected_id != value:
+			selected_id = value
+			EventBus.selection_changed.emit(value)
 
-## 当前交互模式，值变化时自动 emit mode_transited
+## 当前交互模式，变化时 emit mode_transited
 var mode := Mode.NONE:
 	set(value):
 		if mode != value:

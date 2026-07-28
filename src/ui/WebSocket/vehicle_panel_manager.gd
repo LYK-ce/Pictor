@@ -1,6 +1,6 @@
 extends VBoxContainer
 ## Presented by KeJi
-## Date: 2026-07-22
+## Date: 2026-07-28
 ##
 ## VehiclePanelManager — 管理所有车辆信息面板，以及选中状态
 
@@ -38,7 +38,7 @@ func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
 		app_state.selected_id = ""
 
 	_update_selection()
-	EventBus.vehicle_control_changed.emit(app_state.selected_id)
+
 
 func _on_vehicle_unregistered(vehicle_id: String) -> void:
 	var panel: Node = _panels.get(vehicle_id)
@@ -47,7 +47,8 @@ func _on_vehicle_unregistered(vehicle_id: String) -> void:
 		_panels.erase(vehicle_id)
 	if vehicle_id == app_state.selected_id:
 		app_state.selected_id = ""
-		EventBus.vehicle_control_changed.emit("")
+		if app_state.mode == AppStateResource.Mode.FOLLOW:
+			app_state.mode = AppStateResource.Mode.NONE
 
 
 func _on_pose(vehicle_id: String, pose: Dictionary) -> void:

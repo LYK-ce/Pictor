@@ -14,6 +14,12 @@
 # app_state.gd
 enum Mode { NONE, FOLLOW, GOTO }
 
+var selected_id := "":
+    set(value):
+        if selected_id != value:
+            selected_id = value
+            EventBus.selection_changed.emit(value)
+
 var mode := Mode.NONE:
     set(value):
         if mode != value:
@@ -21,9 +27,10 @@ var mode := Mode.NONE:
             EventBus.mode_transited.emit(mode)
 ```
 
-EventBus 只需新增一个信号：
+EventBus 新增两个信号，移除 `vehicle_control_changed`：
 
 ```gdscript
+signal selection_changed(id: String)
 signal mode_transited(mode: int)
 ```
 
@@ -151,13 +158,10 @@ get_global_mouse_position()
 - AppStateResource (task_13)
 - EventBus cmd_send 链路 (task_12)
 - WebSocketManager (task_10)
-
-## 状态
-
-- [ ] 1. AppState 新增 Mode 枚举 + mode 属性
-- [ ] 2. EventBus 新增 `mode_transited`，移除 `camera_follow_requested`
-- [ ] 3. Camera 重构为 IDLE/FOLLOW 状态机
-- [ ] 4. button_list 按钮改为写 `app_state.mode`
-- [ ] 5. CoordUtils 新增 tile 坐标转换
-- [ ] 6. 创建 InputIndicator 组件
-- [ ] 7. 测试 + 调试
+- [ ] 1. AppState: selected_id setter + Mode setter
+- [ ] 2. EventBus: +selection_changed, +mode_transited, -vehicle_control_changed, -camera_follow_requested
+- [ ] 3. Camera 重构 IDLE/FOLLOW 状态机，监听 mode_transited
+- [ ] 4. button_list 改为写 app_state.mode
+- [ ] 5. VehiclePanelManager/ControlMaster 统一用 app_state.selected_id
+- [ ] 6. CoordUtils 新增 tile 坐标转换
+- [ ] 7. InputIndicator 组件
