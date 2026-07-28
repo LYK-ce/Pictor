@@ -8,7 +8,6 @@ extends VBoxContainer
 @export var app_state: AppStateResource
 
 var _panels: Dictionary = {}  # {vehicle_id → Panel}
-var _selected_id := ""
 
 
 func _ready() -> void:
@@ -28,31 +27,26 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 
 
 func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
-	print("[PanelManager] take_control_toggled: ", vehicle_id, " pressed=", pressed, " (was: ", _selected_id, ")")
+	print("[PanelManager] take_control_toggled: ", vehicle_id, " pressed=", pressed, " (was: ", app_state.selected_id, ")")
 	if pressed:
 		# 接管：释放之前的
-		if not _selected_id.is_empty() and _selected_id != vehicle_id:
-			_panels[_selected_id].set_pressed(false)
-		_selected_id = vehicle_id
+		if not app_state.selected_id.is_empty() and app_state.selected_id != vehicle_id:
+			_panels[app_state.selected_id].set_pressed(false)
+		app_state.selected_id = vehicle_id
 	else:
 		# 释放
-		_selected_id = ""
+		app_state.selected_id = ""
 
 	_update_selection()
-	if app_state:
-		app_state.selected_id = _selected_id
-	EventBus.vehicle_control_changed.emit(_selected_id)
-
+	EventBus.vehicle_control_changed.emit(app_state.selected_id)
 
 func _on_vehicle_unregistered(vehicle_id: String) -> void:
 	var panel: Node = _panels.get(vehicle_id)
 	if panel:
 		panel.queue_free()
 		_panels.erase(vehicle_id)
-	if vehicle_id == _selected_id:
-		_selected_id = ""
-		if app_state:
-			app_state.selected_id = ""
+	if vehicle_id == app_state.selected_id:
+		app_state.selected_id = ""
 		EventBus.vehicle_control_changed.emit("")
 
 
@@ -70,4 +64,4 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 
 func _update_selection() -> void:
 	for id in _panels:
-		_panels[id].set_selected(id == _selected_id)
+		_panels[id].set_selected(id == app_state.selected_id)

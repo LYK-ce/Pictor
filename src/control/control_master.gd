@@ -7,7 +7,6 @@ extends Node
 
 @export var app_state: AppStateResource
 
-var _selected_id := ""
 
 
 func _ready() -> void:
@@ -17,7 +16,7 @@ func _ready() -> void:
 
 
 func _on_vehicle_control_changed(vehicle_id: String) -> void:
-	_selected_id = vehicle_id
+	app_state.selected_id = vehicle_id
 	if vehicle_id.is_empty():
 		print("[ControlMaster] deselected")
 	else:
@@ -25,12 +24,12 @@ func _on_vehicle_control_changed(vehicle_id: String) -> void:
 
 
 func _on_vehicle_unregistered(vehicle_id: String) -> void:
-	if vehicle_id == _selected_id:
-		_selected_id = ""
+	if vehicle_id == app_state.selected_id:
+		app_state.selected_id = ""
 		print("[ControlMaster] selected vehicle disconnected, deselected")
 
 
 func _on_ctrl_input(cmd: Dictionary) -> void:
-	if _selected_id.is_empty():
+	if app_state.selected_id.is_empty():
 		return
-	EventBus.cmd_send.emit(_selected_id, cmd)
+	EventBus.cmd_send.emit(app_state.selected_id, cmd)
