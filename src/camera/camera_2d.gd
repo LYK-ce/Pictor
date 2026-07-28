@@ -111,9 +111,9 @@ func _Middle_Drag(event: InputEvent) -> void:
 			_is_dragging = false
 
 	if event is InputEventMouseMotion and _is_dragging:
-		var delta := event.position - _drag_start_mouse
+		var mm := event as InputEventMouseMotion
+		var delta := mm.position - _drag_start_mouse
 		position = _drag_start_camera - delta / zoom
-
 
 ## 边缘滚动 —— 鼠标贴边平移（RTS 风格）
 func _Edge_Scroll(delta: float) -> void:

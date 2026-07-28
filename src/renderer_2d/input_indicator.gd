@@ -51,9 +51,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not app_state:
 		return
 
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		var mouse_pos := get_global_mouse_position()
-		var tile := CoordUtils.game_to_tile(mouse_pos)
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+			var mouse_pos := get_global_mouse_position()
+			var tile := CoordUtils.game_to_tile(mouse_pos)
 		var real := CoordUtils.tile_to_real(tile.x, tile.y)
 
 		EventBus.cmd_send.emit(app_state.selected_id, {
