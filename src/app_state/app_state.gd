@@ -1,5 +1,5 @@
 ## Presented by KeJi
-## Date ： 2026-07-23
+## Date ： 2026-07-28
 ##
 ## AppStateResource — 全局共享状态 Resource
 ## 消费者通过 @export var app_state: AppStateResource 声明依赖，
@@ -8,5 +8,14 @@
 class_name AppStateResource
 extends Resource
 
+enum Mode { NONE, FOLLOW, GOTO }
+
 ## 当前选中的车辆 ID，空字符串 = 无选中
 var selected_id := ""
+
+## 当前交互模式，值变化时自动 emit mode_transited
+var mode := Mode.NONE:
+	set(value):
+		if mode != value:
+			mode = value
+			EventBus.mode_transited.emit(value)

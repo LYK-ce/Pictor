@@ -1,9 +1,9 @@
 ## Presented by KeJi
-## Date ： 2026-07-23
+## Date ： 2026-07-28
 ##
 ## Camera2D — 独立摄像机组件
 ## 控制：中键拖拽 + 边缘滚动 + 滚轮缩放
-## 跟车：Lock Camera 按钮触发，监听 pose_received 平滑跟随
+## 跟车：监听 mode_transited(FOLLOW)，内部 IDLE/FOLLOW 状态机
 
 extends Camera2D
 
@@ -23,50 +23,57 @@ extends Camera2D
 @export var zoom_min := 0.2
 @export var zoom_max := 4.0
 
+enum State { IDLE, FOLLOW }
+var _state := State.IDLE
+
 ## 中键拖拽状态
 var _is_dragging := false
 var _drag_start_mouse := Vector2.ZERO
 var _drag_start_camera := Vector2.ZERO
 
-## 跟车模式
-var _following := false
+## 跟车目标位置（FOLLOW 时由 pose_received 更新）
 var _target_position := Vector2.ZERO
 
 
 func _ready() -> void:
-	EventBus.camera_follow_requested.connect(_on_camera_follow_requested)
+	EventBus.mode_transited.connect(_on_mode_transited)
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.vehicle_unregistered.connect(_on_vehicle_unregistered)
 
 
 func _process(delta: float) -> void:
-	if _following:
-		position = position.lerp(_target_position, 0.3)
-	else:
-		_Edge_Scroll(delta)
+	match _state:
+		State.FOLLOW:
+			position = position.lerp(_target_position, 0.3)
+		_:
+			_Edge_Scroll(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _following:
-		_Zoom(event)
-		return
-	_Middle_Drag(event)
-	_Zoom(event)
+	match _state:
+		State.FOLLOW:
+			_Zoom(event)
+		_:
+			_Middle_Drag(event)
+			_Zoom(event)
 
 
-## 跟车请求 —— Lock Camera 按钮触发
-func _on_camera_follow_requested() -> void:
-	_following = not _following
-	if _following:
-		_target_position = position
-		print("[Camera] follow started")
-	else:
-		print("[Camera] follow stopped")
+## 全局模式变化 → 切换内部状态
+func _on_mode_transited(mode: int) -> void:
+	match mode:
+		AppStateResource.Mode.FOLLOW:
+			_state = State.FOLLOW
+			_target_position = position
+			print("[Camera] follow started")
+		_:
+			if _state == State.FOLLOW:
+				print("[Camera] follow stopped")
+			_state = State.IDLE
 
 
-## 车辆位姿更新 —— 更新跟车目标位置
+## 车辆位姿更新 → 更新跟车目标位置
 func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
-	if not _following:
+	if _state != State.FOLLOW:
 		return
 	if not app_state:
 		return
@@ -77,14 +84,14 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	_target_position = CoordUtils.real_to_game(x, y)
 
 
-## 车辆断开 —— 自动退出跟车
+## 车辆断开 → 自动退出跟车
 func _on_vehicle_unregistered(vehicle_id: String) -> void:
-	if not _following:
+	if _state != State.FOLLOW:
 		return
 	if not app_state:
 		return
 	if vehicle_id == app_state.selected_id:
-		_following = false
+		_state = State.IDLE
 		print("[Camera] follow stopped (vehicle disconnected)")
 
 
@@ -104,7 +111,7 @@ func _Middle_Drag(event: InputEvent) -> void:
 			_is_dragging = false
 
 	if event is InputEventMouseMotion and _is_dragging:
-		var delta = event.position - _drag_start_mouse
+		var delta := event.position - _drag_start_mouse
 		position = _drag_start_camera - delta / zoom
 
 
@@ -140,6 +147,5 @@ func _Apply_Zoom(step: float, anchor: Vector2) -> void:
 	if new_zoom == old_zoom:
 		return
 	zoom = Vector2(new_zoom, new_zoom)
-	# 保持鼠标指向的世界位置不变
 	var ratio := new_zoom / old_zoom - 1.0
 	position += (position - anchor) * ratio

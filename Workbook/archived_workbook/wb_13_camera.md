@@ -3,8 +3,8 @@
 ## meta
 - task: task_13_camera
 - start: 2026-07-22
-- end:
-- status: in-progress
+- end: 2026-07-23
+- status: done
 
 ## created / modified
 - src/app_state/ — new directory
@@ -14,7 +14,9 @@
 - src/camera/ — new directory
 - src/camera/camera_2d.gd — new: 中键拖拽 + 边缘滚动 + 滚轮缩放 + 跟车模式(lerp)
 - src/camera/camera_2d.tscn — new: Camera2D scene (+app_state export)
-- src/main/main.tscn — +Camera2D node (instance from camera_2d.tscn)
+- src/main/main.tscn — +Camera2D node, +Button node, app_state 引用
+- src/control/control.tscn — app_state 引用
+- src/ui/WebSocket/websocket_menu.tscn — app_state 引用
 - src/renderer_2d/Vehicle/vehicle_2d.tscn — -Camera2D child
 - src/ui/button_list.gd — emit camera_follow_requested
 - src/ui/WebSocket/vehicle_panel_manager.gd — +app_state export, 选中/断开时写 selected_id
@@ -29,4 +31,5 @@
 - 共享状态: AppStateResource (.tres)，非 Autoload，消费者 @export 拖入
 - 跟车: button_list → EventBus.camera_follow_requested → Camera 自切 _following
 - 跟车时禁拖拽/边缘，缩放保留；lerp 平滑；车辆断开自动退出
+- 编辑器手动挂载 app_state.tres: Camera, ControlMaster, VehiclePanelManager
 - zoom_slider、边界限制: 人工处理

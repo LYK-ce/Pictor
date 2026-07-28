@@ -123,4 +123,5 @@ _process:
 - [x] 7. VehiclePanelManager / ControlMaster 适配 AppStateResource
 - [x] 8. Camera 跟车模式实现
 - [x] 9. button_list 信号 → Camera 触发跟车
-- [ ] 10. zoom_slider UI（人工）
+- [x] 10. human: 编辑器挂载 app_state.tres 到 Camera/ControlMaster/VehiclePanelManager
+- [ ] 11. zoom_slider UI（人工）
