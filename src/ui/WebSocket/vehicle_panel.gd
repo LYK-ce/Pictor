@@ -45,6 +45,13 @@ func set_selected(selected: bool) -> void:
 func set_pressed(pressed: bool) -> void:
 	_btn_take.set_pressed_no_signal(pressed)
 
+func set_manual_checked(checked: bool) -> void:
+	$VBoxContainer/Manual.set_pressed_no_signal(checked)
+
 
 func _on_manual_toggled(toggled_on: bool) -> void:
-	pass # Replace with function body.
+	var id := _id_label.text
+	if toggled_on:
+		EventBus.cmd_send.emit(id, {"cmd": "mode", "action": "switch_to_manual"})
+	else:
+		EventBus.cmd_send.emit(id, {"cmd": "mode", "action": "switch_to_auto"})
