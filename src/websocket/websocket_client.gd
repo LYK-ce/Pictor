@@ -97,9 +97,11 @@ func send(msg: String) -> void:
 
 
 func _on_message(text: String) -> void:
-	var parsed := Protocol.parse(text)
-	var msg_type: String = parsed.get("type", "")
-	var data = parsed.get("data", {})
+	var data := Protocol.parse(text)
+	if data.is_empty():
+		return
+
+	var msg_type: String = data.get("type", "")
 
 	if msg_type == "hello":
 		_vehicle_id = data.get("vehicle_id", "")

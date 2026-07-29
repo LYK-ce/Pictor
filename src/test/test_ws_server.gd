@@ -197,9 +197,8 @@ func _Read_Incoming() -> void:
 		if pkt.size() == 0 or not _peer.was_string_packet():
 			continue
 		var text := pkt.get_string_from_utf8()
-		var parsed := Protocol.parse(text)
-		var data = parsed.get("data", {})
-		if parsed.get("type", "") == "":
+		var data := Protocol.parse(text)
+		if data.is_empty():
 			continue
 
 		var cmd: String = data.get("cmd", "")
