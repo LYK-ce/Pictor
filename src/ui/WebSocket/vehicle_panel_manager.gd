@@ -33,14 +33,14 @@ func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
 		if not app_state.selected_id.is_empty() and app_state.selected_id != vehicle_id:
 			_panels[app_state.selected_id].set_pressed(false)
 			_panels[app_state.selected_id].set_manual_checked(false)
-			EventBus.cmd_send.emit(app_state.selected_id, {"cmd": "mode", "action": "switch_to_manual"})
+			EventBus.cmd_send.emit(app_state.selected_id, MessageBuilder.build_mode_switch_to_auto())
 		app_state.selected_id = vehicle_id
 	else:
 		# 释放
 		var panel = _panels.get(vehicle_id)
 		if panel:
 			panel.set_manual_checked(false)
-		EventBus.cmd_send.emit(vehicle_id, {"cmd": "mode", "action": "switch_to_manual"})
+		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
 		app_state.selected_id = ""
 
 	_update_selection()

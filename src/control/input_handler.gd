@@ -28,6 +28,6 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if key_event.pressed:
-		ctrl_input.emit({"cmd": "manual", "action": _KEY_MAP[key_event.keycode], "speed": 50})
+		ctrl_input.emit(MessageBuilder.build_manual_action(_KEY_MAP[key_event.keycode]))
 	else:
-		ctrl_input.emit({"cmd": "manual", "action": "stop"})
+		ctrl_input.emit(MessageBuilder.build_manual_stop())

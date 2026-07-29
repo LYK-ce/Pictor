@@ -3,6 +3,7 @@ extends Node
 ## Date: 2026-07-12
 ##
 ## WebSocketClient — WebSocket 通信组件
+## 协议解析委托给 MessageParser，只负责 WS 连接管理和 EventBus 信号转发。
 
 enum State { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -52,20 +53,48 @@ func _read_packets() -> void:
 			# 二进制帧（hello 之后才处理）
 			if not _identified:
 				continue
-			match pkt[0]:  # type byte
-				0:  # map_full
-					var chunk_x := pkt.decode_s32(1)
-					var chunk_y := pkt.decode_s32(5)
-					var cells := pkt.slice(9)
-					# DEBUG: 统计 cell 类型分布
-					var c0 := 0; var c1 := 0; var c2 := 0
-					for i in range(cells.size()):
-						match cells[i]:
-							0: c0 += 1
-							1: c1 += 1
-							2: c2 += 1
-					print("[WS] map_full bin: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d]" % [chunk_x, chunk_y, cells.size(), c0, c1, c2])
-					EventBus.map_full_received.emit(chunk_x, chunk_y, cells)
+			var result := MessageParser.parse_binary(pkt)
+			if not result.ok:
+				printerr("[WS] binary parse error: ", result.error)
+				continue
+			if result.type == ProtocolDef.BIN_MAP_FULL_TYPE:
+				# DEBUG: 统计 cell 类型分布
+				var cells: PackedByteArray = result.cells
+				var c0 := 0; var c1 := 0; var c2 := 0
+				for i in range(cells.size()):
+					match cells[i]:
+						0: c0 += 1
+						1: c1 += 1
+						2: c2 += 1
+				print("[WS] map_full bin: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d]" % [result.chunk_x, result.chunk_y, cells.size(), c0, c1, c2])
+				EventBus.map_full_received.emit(result.chunk_x, result.chunk_y, cells)
+
+
+func _on_message(text: String) -> void:
+	var result := MessageParser.parse_json(text)
+	if not result.ok:
+		printerr("[WS] ", result.error)
+		return
+
+	var data: Dictionary = result.data
+	var msg_type: String = result.type
+
+	if msg_type == ProtocolDef.MSG_HELLO:
+		_vehicle_id = data.get("vehicle_id", "")
+		_identified = true
+		print("[WS] identified as: ", _vehicle_id)
+		EventBus.vehicle_registered.emit(_vehicle_id, _url)
+		return
+
+	# hello 之前的所有消息丢弃
+	if not _identified:
+		return
+
+	match msg_type:
+		ProtocolDef.MSG_POSE:
+			EventBus.pose_received.emit(_vehicle_id, data)
+		ProtocolDef.MSG_MAP_DELTA:
+			EventBus.map_delta_received.emit(data.get("voxels", []))
 
 
 func _connect() -> void:
@@ -94,38 +123,6 @@ func send(msg: String) -> void:
 		printerr("[WS] send failed: not connected")
 		return
 	_ws.send_text(msg)
-
-
-func _on_message(text: String) -> void:
-	var json := JSON.new()
-	var err := json.parse(text)
-	if err != OK:
-		printerr("[WS] bad JSON: ", text.left(100))
-		return
-
-	var data = json.get_data()
-	if not data is Dictionary:
-		return
-
-	var msg_type: String = data.get("type", "")
-
-	if msg_type == "hello":
-		_vehicle_id = data.get("vehicle_id", "")
-		_identified = true
-		print("[WS] identified as: ", _vehicle_id)
-		EventBus.vehicle_registered.emit(_vehicle_id, _url)
-		return
-
-	# hello 之前的所有消息丢弃
-	if not _identified:
-		return
-
-	#print("[WS] msg: ", msg_type, " from ", _vehicle_id)
-	match msg_type:
-		"pose":
-			EventBus.pose_received.emit(_vehicle_id, data)
-		"map_delta":
-			EventBus.map_delta_received.emit(data.get("voxels", []))
 
 
 func get_state() -> int:

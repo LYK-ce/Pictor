@@ -1,5 +1,10 @@
 # WebSocket 通信协议
 
+> **代码实现**: 协议定义/构造/解析统一在 `src/websocket/protocol/` 目录。
+> - `ProtocolDef` — 所有魔法字符串常量
+> - `MessageBuilder` — 下行消息构造（PC → 小车）
+> - `MessageParser` — 上行消息解析（小车 → PC）
+
 ## 基本信息
 
 | 项目 | 值 |
