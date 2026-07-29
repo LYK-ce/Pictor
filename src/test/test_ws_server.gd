@@ -96,6 +96,9 @@ func _process(delta: float) -> void:
 
 func _Update_Movement(delta: float) -> void:
 	match _op_mode:
+		OpMode.MANUAL:
+			_x += _vx * delta
+			_y += _vy * delta
 		OpMode.AUTO:
 			match _exec_state:
 				ExecState.IDLE:
