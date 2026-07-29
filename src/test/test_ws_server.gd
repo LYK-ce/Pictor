@@ -196,14 +196,10 @@ func _Read_Incoming() -> void:
 		var pkt := _peer.get_packet()
 		if pkt.size() == 0 or not _peer.was_string_packet():
 			continue
-
 		var text := pkt.get_string_from_utf8()
-		var json := JSON.new()
-		if json.parse(text) != OK:
-			continue
-
-		var data = json.get_data()
-		if not data is Dictionary:
+		var parsed := Protocol.parse(text)
+		var data = parsed.get("data", {})
+		if parsed.get("type", "") == "":
 			continue
 
 		var cmd: String = data.get("cmd", "")

@@ -44,11 +44,6 @@ func _input(event: InputEvent) -> void:
 		var tile := CoordUtils.game_to_tile(mouse_pos)
 		var real := CoordUtils.tile_to_real(tile.x, tile.y)
 
-		EventBus.cmd_send.emit(app_state.selected_id, {
-			"cmd": "auto",
-			"action": "push",
-			"missions": [{"type": "goto", "x": real.x, "y": real.y}]
-		})
-
+		EventBus.cmd_send.emit(app_state.selected_id, Protocol.auto_goto(real.x, real.y))
 		app_state.mode = AppStateResource.Mode.NONE
 		get_viewport().set_input_as_handled()
