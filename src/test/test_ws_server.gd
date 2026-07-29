@@ -249,6 +249,7 @@ func _Handle_Manual(action: String, speed: int) -> void:
 		"spin_left":
 			_vx = 0.0
 			_vy = 0.0
+			_yaw -= TURN_SPEED * 0.1  # 10Hz 每帧
 		"spin_right":
 			_vx = 0.0
 			_vy = 0.0
