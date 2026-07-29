@@ -42,12 +42,15 @@ static func auto_cancel() -> Dictionary:
 
 # ── 解码（小车 → PC）──
 
-## 解析收到的文本消息，返回解析后的 Dictionary（{} 表示失败）
+## 解析收到的文本消息，返回 {type, data}
 static func parse(text: String) -> Dictionary:
 	var json := JSON.new()
 	if json.parse(text) != OK:
-		return {}
+		return {"type": "", "data": {}}
+
 	var data = json.get_data()
 	if not data is Dictionary:
-		return {}
-	return data
+		return {"type": "", "data": {}}
+
+	var msg_type: String = data.get("type", "")
+	return {"type": msg_type, "data": data}
