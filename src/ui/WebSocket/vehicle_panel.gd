@@ -52,6 +52,6 @@ func set_manual_checked(checked: bool) -> void:
 func _on_manual_toggled(toggled_on: bool) -> void:
 	var id := _id_label.text
 	if toggled_on:
-		EventBus.cmd_send.emit(id, Protocol.mode_switch_to_manual())
+		EventBus.cmd_send.emit(id, {"cmd": "mode", "action": "switch_to_manual"})
 	else:
-		EventBus.cmd_send.emit(id, Protocol.mode_switch_to_auto())
+		EventBus.cmd_send.emit(id, {"cmd": "mode", "action": "switch_to_auto"})

@@ -97,9 +97,17 @@ func send(msg: String) -> void:
 
 
 func _on_message(text: String) -> void:
-	var parsed := Protocol.parse(text)
-	var msg_type: String = parsed.get("type", "")
-	var data = parsed.get("data", {})
+	var json := JSON.new()
+	var err := json.parse(text)
+	if err != OK:
+		printerr("[WS] bad JSON: ", text.left(100))
+		return
+
+	var data = json.get_data()
+	if not data is Dictionary:
+		return
+
+	var msg_type: String = data.get("type", "")
 
 	if msg_type == "hello":
 		_vehicle_id = data.get("vehicle_id", "")
@@ -112,7 +120,7 @@ func _on_message(text: String) -> void:
 	if not _identified:
 		return
 
-	print("[WS] msg: ", msg_type, " from ", _vehicle_id)
+	#print("[WS] msg: ", msg_type, " from ", _vehicle_id)
 	match msg_type:
 		"pose":
 			EventBus.pose_received.emit(_vehicle_id, data)

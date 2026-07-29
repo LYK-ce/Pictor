@@ -28,6 +28,6 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if key_event.pressed:
-		ctrl_input.emit(Protocol.manual(_KEY_MAP[key_event.keycode]))
+		ctrl_input.emit({"cmd": "manual", "action": _KEY_MAP[key_event.keycode], "speed": 50})
 	else:
-		ctrl_input.emit(Protocol.manual("stop"))
+		ctrl_input.emit({"cmd": "manual", "action": "stop"})

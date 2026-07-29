@@ -158,13 +158,10 @@ get_global_mouse_position()
 - AppStateResource (task_13)
 - EventBus cmd_send 链路 (task_12)
 - WebSocketManager (task_10)
-- [x] 1. AppState: selected_id setter + Mode setter
-- [x] 2. EventBus: +selection_changed, +mode_transited, -vehicle_control_changed, -camera_follow_requested
-- [x] 3. Camera 重构 IDLE/FOLLOW 状态机，监听 mode_transited
-- [x] 4. button_list 改为写 app_state.mode
-- [x] 5. VehiclePanelManager/ControlMaster 统一用 app_state.selected_id
-- [x] 6. CoordUtils 新增 tile 坐标转换
-- [x] 7. InputIndicator 组件
-- [x] 8. 协议对齐 Orion，test_ws_server Robot Controller 模拟
-- [x] 9. ControlMaster(Node2D) 接管 Goto 点击
-- [x] 10. Manual/Auto 模式切换逻辑修正
+- [ ] 1. AppState: selected_id setter + Mode setter
+- [ ] 2. EventBus: +selection_changed, +mode_transited, -vehicle_control_changed, -camera_follow_requested
+- [ ] 3. Camera 重构 IDLE/FOLLOW 状态机，监听 mode_transited
+- [ ] 4. button_list 改为写 app_state.mode
+- [ ] 5. VehiclePanelManager/ControlMaster 统一用 app_state.selected_id
+- [ ] 6. CoordUtils 新增 tile 坐标转换
+- [ ] 7. InputIndicator 组件
