@@ -42,6 +42,7 @@ var _y := 5.0
 var _vx := 0.0
 var _vy := 0.0
 var _yaw := 0.0
+var _turn_rate := 0.0
 
 # 模式
 var _op_mode := OpMode.AUTO
@@ -99,6 +100,7 @@ func _Update_Movement(delta: float) -> void:
 		OpMode.MANUAL:
 			_x += _vx * delta
 			_y += _vy * delta
+			_yaw += _turn_rate * delta
 		OpMode.AUTO:
 			match _exec_state:
 				ExecState.IDLE:
@@ -107,8 +109,6 @@ func _Update_Movement(delta: float) -> void:
 					_Turn_Toward_Goal(delta)
 				ExecState.MOVING:
 					_Move_Toward_Goal(delta)
-
-
 func _Turn_Toward_Goal(delta: float) -> void:
 	var target_yaw := atan2(_goal_y - _y, _goal_x - _x)
 	var diff := fmod(target_yaw - _yaw + PI, TAU) - PI
@@ -249,13 +249,14 @@ func _Handle_Manual(action: String, speed: int) -> void:
 		"spin_left":
 			_vx = 0.0
 			_vy = 0.0
-			_yaw -= TURN_SPEED * 0.1  # 10Hz 每帧
+			_turn_rate = -TURN_SPEED
 		"spin_right":
 			_vx = 0.0
 			_vy = 0.0
 		"stop":
 			_vx = 0.0
 			_vy = 0.0
+			_turn_rate = 0.0
 
 
 func _Handle_Auto(action: String, missions: Array) -> void:
