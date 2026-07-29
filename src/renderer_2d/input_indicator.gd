@@ -1,13 +1,11 @@
 ## Presented by KeJi
-## Date ： 2026-07-28
+## Date ： 2026-07-29
 ##
-## InputIndicator — Goto 模式输入指示器
+## InputIndicator — Goto 模式 tile 高亮框
 ## 挂载在 Renderer2D 下，监听 mode_transited，
-## Goto 时显示 tile 高亮框，点击下发 goto 命令。
+## Goto 时显示绿色半透明高亮框跟随鼠标吸附 tile。
 
 extends Node2D
-
-@export var app_state: AppStateResource
 
 enum State { IDLE, ACTIVE }
 var _state := State.IDLE
@@ -43,29 +41,3 @@ func _process(_delta: float) -> void:
 	var mouse_pos := get_global_mouse_position()
 	var tile := CoordUtils.game_to_tile(mouse_pos)
 	_highlight.position = CoordUtils.tile_to_game(tile.x, tile.y) - _highlight.size / 2.0
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if _state != State.ACTIVE:
-		return
-	if not app_state:
-		return
-
-	if not event is InputEventMouseButton:
-		return
-	var mb := event as InputEventMouseButton
-	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
-		return
-
-	var mouse_pos := get_global_mouse_position()
-	var tile := CoordUtils.game_to_tile(mouse_pos)
-	var real := CoordUtils.tile_to_real(tile.x, tile.y)
-
-	EventBus.cmd_send.emit(app_state.selected_id, {
-		"cmd": "auto",
-		"action": "push",
-		"missions": [{"type": "goto", "x": real.x, "y": real.y}]
-	})
-
-	app_state.mode = AppStateResource.Mode.NONE
-	get_viewport().set_input_as_handled()
