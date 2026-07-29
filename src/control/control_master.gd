@@ -18,7 +18,6 @@ func _ready() -> void:
 
 func _on_mode_transited(mode: int) -> void:
 	if mode == AppStateResource.Mode.GOTO:
-		print(self.name,'transit to goto state')
 		_state = State.GOTO
 	else:
 		_state = State.IDLE
@@ -30,16 +29,13 @@ func _on_ctrl_input(cmd: Dictionary) -> void:
 	EventBus.cmd_send.emit(app_state.selected_id, cmd)
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	
+func _input(event: InputEvent) -> void:
 	if _state != State.GOTO:
 		return
 	if app_state.selected_id.is_empty():
 		return
 
-	print(self.name,'try to go',event)
 	if event is InputEventMouseButton:
-		print(self.name,'Input',event)
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 			return
