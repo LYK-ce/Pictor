@@ -8,8 +8,6 @@
 [ext_resource type="PackedScene" uid="uid://g7bchdk3ykyy" path="res://src/control/control.tscn" id="6_ctrl"]
 [ext_resource type="PackedScene" uid="uid://bhw00pp3bnwb4" path="res://src/camera/camera_2d.tscn" id="7_cam"]
 [ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button_list.tscn" id="7_frqgp"]
-[ext_resource type="PackedScene" path="res://src/test/test_ws_server.tscn" id="10_erw1m"]
-[ext_resource type="Resource" path="res://Assets/2D/map_chunk_0_0.tres" id="11_w0wra"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
@@ -30,7 +28,3 @@ texture_filter = 1
 [node name="Button" parent="UI" unique_id=471177575 instance=ExtResource("7_frqgp")]
 
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
-
-[node name="TestWSServer" parent="." unique_id=277784559 instance=ExtResource("10_erw1m")]
-send_map = true
-map_chunk = ExtResource("11_w0wra")
