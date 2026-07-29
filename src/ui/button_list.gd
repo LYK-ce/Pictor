@@ -19,3 +19,4 @@ func _on_goto_pressed() -> void:
 		app_state.mode = AppStateResource.Mode.NONE
 	else:
 		app_state.mode = AppStateResource.Mode.GOTO
+		print(self.name,'goto button pressed')
