@@ -253,6 +253,7 @@ func _Handle_Manual(action: String, speed: int) -> void:
 		"spin_right":
 			_vx = 0.0
 			_vy = 0.0
+			_turn_rate = TURN_SPEED
 		"stop":
 			_vx = 0.0
 			_vy = 0.0
