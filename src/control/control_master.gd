@@ -45,7 +45,7 @@ func _input(event: InputEvent) -> void:
 		var real := CoordUtils.tile_to_real(tile.x, tile.y)
 
 		EventBus.cmd_send.emit(app_state.selected_id,
-			MessageBuilder.build_auto_push_goto(real.x, real.y)
+			MessageBuilder.build_auto_push_goto(real.x, real.y))
 
 		app_state.mode = AppStateResource.Mode.NONE
 		get_viewport().set_input_as_handled()
