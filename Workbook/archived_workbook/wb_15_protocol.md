@@ -5,7 +5,6 @@
 - start: 2026-07-29
 - end: 2026-07-29
 - status: completed
-
 ## changes
 - created: src/websocket/protocol/protocol_def.gd (枚举/常量)
 - created: src/websocket/protocol/message_parser.gd (上行解析)
