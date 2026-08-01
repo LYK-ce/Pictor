@@ -10,13 +10,12 @@ extends Resource
 
 enum Mode { NONE, FOLLOW, GOTO }
 
-## 当前选中的车辆 ID，空字符串 = 无选中，变化时 emit selection_changed
-var selected_id := "":
-	set(value):
-		if selected_id != value:
-			selected_id = value
-			EventBus.selection_changed.emit(value)
+## 多选车辆 ID 列表，Goto/LLM 命令广播给这些车
+var selected_ids: Array[String] = []
 
+## 兼容旧代码的单车 ID（取 selected_ids 第一辆，空数组返回 ""）
+var selected_id: String:
+	get: return selected_ids[0] if selected_ids.size() > 0 else ""
 ## 当前交互模式，变化时 emit mode_transited
 var mode := Mode.NONE:
 	set(value):
