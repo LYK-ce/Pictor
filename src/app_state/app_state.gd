@@ -16,6 +16,9 @@ var selected_ids: Array[String] = []
 ## 兼容旧代码的单车 ID（取 selected_ids 第一辆，空数组返回 ""）
 var selected_id: String:
 	get: return selected_ids[0] if selected_ids.size() > 0 else ""
+
+## 手动操控目标，至多 1 辆，WASD 对象
+var manual_target: String = ""
 ## 当前交互模式，变化时 emit mode_transited
 var mode := Mode.NONE:
 	set(value):

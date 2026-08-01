@@ -15,12 +15,15 @@ signal panel_clicked(vehicle_id: String, ctrl_held: bool)
 
 var _style_normal: StyleBoxFlat
 var _style_selected: StyleBoxFlat
+var _style_auto_selected: StyleBoxFlat
 
 
 func _ready() -> void:
 	_style_normal = get_theme_stylebox("panel").duplicate() as StyleBoxFlat
 	_style_selected = _style_normal.duplicate()
 	_style_selected.border_color = Color(0.3, 0.5, 1.0)
+	_style_auto_selected = _style_normal.duplicate()
+	_style_auto_selected.border_color = Color(0.3, 1.0, 0.5)
 	mouse_filter = MOUSE_FILTER_STOP
 func Update(vehicle_id: String, position: String, yaw: String, velocity: String) -> void:
 	_id_label.text = vehicle_id
@@ -63,3 +66,12 @@ func _on_manual_toggled(toggled_on: bool) -> void:
 		EventBus.cmd_send.emit(id, MessageBuilder.build_mode_switch_to_manual())
 	else:
 		EventBus.cmd_send.emit(id, MessageBuilder.build_mode_switch_to_auto())
+
+
+
+func set_auto_selected(selected: bool) -> void:
+	add_theme_stylebox_override("panel", _style_auto_selected if selected else _style_normal)
+
+
+func set_mode_label(mode: String) -> void:
+	$VBoxContainer/Mode.text = mode

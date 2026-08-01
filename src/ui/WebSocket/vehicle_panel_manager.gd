@@ -27,33 +27,50 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 	_panels[vehicle_id] = panel
 
 
+func _on_panel_clicked(vehicle_id: String, ctrl_held: bool) -> void:
+	if not ctrl_held:
+		return
 
+	# Ctrl+点手动车 → 切换回 auto，加入队列
+	if vehicle_id == app_state.manual_target:
+		app_state.manual_target = ""
+		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
+		app_state.selected_ids.append(vehicle_id)
+		_update_selection()
+		return
 
-func _on_panel_clicked(vehicle_id: String, _ctrl_held: bool) -> void:
+	# Ctrl+点普通车 → toggle
 	if app_state.selected_ids.has(vehicle_id):
 		app_state.selected_ids.erase(vehicle_id)
 	else:
 		app_state.selected_ids.append(vehicle_id)
 	_update_selection()
 
+
 func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
-	print("[PanelManager] take_control_toggled: ", vehicle_id, " pressed=", pressed, " (was: ", app_state.selected_id, ")")
 	if pressed:
-		# 接管：释放之前的
-		if not app_state.selected_id.is_empty() and app_state.selected_id != vehicle_id:
-			_panels[app_state.selected_id].set_pressed(false)
-			_panels[app_state.selected_id].set_manual_checked(false)
-			EventBus.cmd_send.emit(app_state.selected_id, MessageBuilder.build_mode_switch_to_auto())
-		app_state.selected_ids = [vehicle_id]
+		# —— 切换为 Manual ——
+		# 释放旧手动车 → 未选中
+		if not app_state.manual_target.is_empty() and app_state.manual_target != vehicle_id:
+			var old := app_state.manual_target
+			_panels[old].set_pressed(false)
+			_panels[old].set_manual_checked(false)
+			EventBus.cmd_send.emit(old, MessageBuilder.build_mode_switch_to_auto())
+
+		# 从 auto 队列移除
+		app_state.selected_ids.erase(vehicle_id)
+
+		# 设新手动车
+		app_state.manual_target = vehicle_id
+		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_manual())
 	else:
-		# 释放
-		var panel = _panels.get(vehicle_id)
-		if panel:
-			panel.set_manual_checked(false)
+		# —— 切换为 Auto ——
+		app_state.manual_target = ""
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
-		app_state.selected_ids.clear()
+		# 不加入 selected_ids，变未选中
 
 	_update_selection()
+
 
 func _on_vehicle_unregistered(vehicle_id: String) -> void:
 	var panel: Node = _panels.get(vehicle_id)
@@ -61,8 +78,12 @@ func _on_vehicle_unregistered(vehicle_id: String) -> void:
 		panel.queue_free()
 		_panels.erase(vehicle_id)
 	app_state.selected_ids.erase(vehicle_id)
+	if vehicle_id == app_state.manual_target:
+		app_state.manual_target = ""
 	if app_state.mode == AppStateResource.Mode.FOLLOW and vehicle_id == app_state.selected_id:
 		app_state.mode = AppStateResource.Mode.NONE
+
+
 func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	var panel = _panels.get(vehicle_id)
 	if not panel:
@@ -77,4 +98,15 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 
 func _update_selection() -> void:
 	for id in _panels:
-		_panels[id].set_selected(app_state.selected_ids.has(id))
+		var is_manual := id == app_state.manual_target
+		var is_auto := app_state.selected_ids.has(id)
+
+		_panels[id].set_selected(is_manual)
+		_panels[id].set_auto_selected(is_auto)
+
+		if is_manual:
+			_panels[id].set_mode_label("Manual")
+		elif is_auto:
+			_panels[id].set_mode_label("Auto")
+		else:
+			_panels[id].set_mode_label("")
