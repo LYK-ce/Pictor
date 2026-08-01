@@ -8,6 +8,8 @@
 [ext_resource type="PackedScene" uid="uid://g7bchdk3ykyy" path="res://src/control/control.tscn" id="6_ctrl"]
 [ext_resource type="PackedScene" uid="uid://bhw00pp3bnwb4" path="res://src/camera/camera_2d.tscn" id="7_cam"]
 [ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button_list.tscn" id="7_frqgp"]
+[ext_resource type="PackedScene" path="res://src/test/test_ws_server.tscn" id="9_km7bn"]
+[ext_resource type="Resource" path="res://Assets/2D/map_chunk_0_0.tres" id="10_erw1m"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
@@ -28,3 +30,15 @@ texture_filter = 1
 [node name="Button" parent="UI" unique_id=471177575 instance=ExtResource("7_frqgp")]
 
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
+
+[node name="TestWSServer" parent="." unique_id=1866517460 instance=ExtResource("9_km7bn")]
+send_map = true
+map_chunk = ExtResource("10_erw1m")
+
+[node name="TestWSServer2" parent="." unique_id=770708464 instance=ExtResource("9_km7bn")]
+vehicle_id = "test_car_1"
+port = 9091
+
+[node name="TestWSServer3" parent="." unique_id=1386775380 instance=ExtResource("9_km7bn")]
+vehicle_id = "test_car_2"
+port = 9092
