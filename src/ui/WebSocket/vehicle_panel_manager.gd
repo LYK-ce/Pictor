@@ -22,9 +22,16 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 	var panel := vehicle_panel_scene.instantiate()
 	panel.name = vehicle_id
 	panel.take_control_toggled.connect(_on_take_control_toggled)
+	panel.panel_clicked.connect(_on_panel_clicked)
 	add_child(panel)
 	_panels[vehicle_id] = panel
 
+
+
+func _on_panel_clicked(vehicle_id: String, _ctrl_held: bool) -> void:
+	print("[PanelManager] panel_clicked: ", vehicle_id)
+	app_state.selected_id = vehicle_id
+	_update_selection()
 
 func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
 	print("[PanelManager] take_control_toggled: ", vehicle_id, " pressed=", pressed, " (was: ", app_state.selected_id, ")")

@@ -5,6 +5,7 @@ extends PanelContainer
 ## VehiclePanel — 单车信息面板
 
 signal take_control_toggled(vehicle_id: String, pressed: bool)
+signal panel_clicked(vehicle_id: String, ctrl_held: bool)
 
 @onready var _id_label := $VBoxContainer/ID as Label
 @onready var _pose_label := $VBoxContainer/Pose as Label
@@ -20,8 +21,7 @@ func _ready() -> void:
 	_style_normal = get_theme_stylebox("panel").duplicate() as StyleBoxFlat
 	_style_selected = _style_normal.duplicate()
 	_style_selected.border_color = Color(0.3, 0.5, 1.0)
-
-
+	mouse_filter = MOUSE_FILTER_STOP
 func Update(vehicle_id: String, position: String, yaw: String, velocity: String) -> void:
 	_id_label.text = vehicle_id
 	_pos_label.text = position
@@ -36,6 +36,14 @@ func _on_disconnect_pressed() -> void:
 func _on_take_control_toggled(pressed: bool) -> void:
 	print("[VehiclePanel] take_control_toggled: ", _id_label.text, " pressed=", pressed)
 	take_control_toggled.emit(_id_label.text, pressed)
+
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and mb.ctrl_pressed:
+			panel_clicked.emit(_id_label.text, true)
+			accept_event()
 
 
 func set_selected(selected: bool) -> void:
