@@ -28,15 +28,12 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 
 
 
-func _on_panel_clicked(vehicle_id: String, ctrl_held: bool) -> void:
-	print("[PanelManager] panel_clicked: ", vehicle_id, " ctrl=", ctrl_held)
-	if ctrl_held:
-		if app_state.selected_ids.has(vehicle_id):
-			app_state.selected_ids.erase(vehicle_id)
-		else:
-			app_state.selected_ids.append(vehicle_id)
+
+func _on_panel_clicked(vehicle_id: String, _ctrl_held: bool) -> void:
+	if app_state.selected_ids.has(vehicle_id):
+		app_state.selected_ids.erase(vehicle_id)
 	else:
-		app_state.selected_ids = [vehicle_id]
+		app_state.selected_ids.append(vehicle_id)
 	_update_selection()
 
 func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
