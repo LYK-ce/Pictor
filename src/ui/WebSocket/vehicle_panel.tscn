@@ -29,6 +29,9 @@ text = "小车ID"
 layout_mode = 2
 text = "网络地址"
 
+[node name="Mode" type="Label" parent="VBoxContainer" unique_id=1771886883]
+layout_mode = 2
+
 [node name="Pose" type="Label" parent="VBoxContainer" unique_id=120379300]
 layout_mode = 2
 text = "位姿"
