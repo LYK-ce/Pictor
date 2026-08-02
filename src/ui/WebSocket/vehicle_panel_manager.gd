@@ -21,8 +21,8 @@ func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
 		return
 	var panel := vehicle_panel_scene.instantiate()
 	panel.name = vehicle_id
-	panel.take_control_toggled.connect(_on_take_control_toggled)
 	panel.panel_clicked.connect(_on_panel_clicked)
+	panel.mode_toggled.connect(_on_mode_toggled)
 	add_child(panel)
 	_panels[vehicle_id] = panel
 
@@ -33,10 +33,7 @@ func _on_panel_clicked(vehicle_id: String, ctrl_held: bool) -> void:
 
 	# Ctrl+点手动车 → 切换回 auto，加入队列
 	if vehicle_id == app_state.manual_target:
-		var panel = _panels.get(vehicle_id)
-		if panel:
-			panel.set_pressed(false)
-			panel.set_manual_checked(false)
+		_panels[vehicle_id].set_manual_checked(false)
 		app_state.manual_target = ""
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
 		app_state.selected_ids.append(vehicle_id)
@@ -51,13 +48,12 @@ func _on_panel_clicked(vehicle_id: String, ctrl_held: bool) -> void:
 	_update_selection()
 
 
-func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
-	if pressed:
+func _on_mode_toggled(vehicle_id: String, to_manual: bool) -> void:
+	if to_manual:
 		# —— 切换为 Manual ——
 		# 释放旧手动车 → 未选中
 		if not app_state.manual_target.is_empty() and app_state.manual_target != vehicle_id:
 			var old := app_state.manual_target
-			_panels[old].set_pressed(false)
 			_panels[old].set_manual_checked(false)
 			EventBus.cmd_send.emit(old, MessageBuilder.build_mode_switch_to_auto())
 
@@ -69,10 +65,6 @@ func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_manual())
 	else:
 		# —— 切换为 Auto ——
-		var panel = _panels.get(vehicle_id)
-		if panel:
-			panel.set_pressed(false)
-			panel.set_manual_checked(false)
 		app_state.manual_target = ""
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
 		# 不加入 selected_ids，变未选中
@@ -106,15 +98,13 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 
 func _update_selection() -> void:
 	for id: String in _panels:
-		var is_manual: bool = id == app_state.manual_target
-		var is_auto: bool = app_state.selected_ids.has(id)
-
-		_panels[id].set_selected(is_manual)
-		_panels[id].set_auto_selected(is_auto)
-
-		if is_manual:
-			_panels[id].set_mode_label("Manual")
-		elif is_auto:
-			_panels[id].set_mode_label("Auto")
+		var panel = _panels[id]
+		if id == app_state.manual_target:
+			panel.set_panel_state(panel.PanelState.MANUAL)
+			panel.set_mode_label("Manual")
+		elif app_state.selected_ids.has(id):
+			panel.set_panel_state(panel.PanelState.AUTO)
+			panel.set_mode_label("Auto")
 		else:
-			_panels[id].set_mode_label("")
+			panel.set_panel_state(panel.PanelState.NORMAL)
+			panel.set_mode_label("")
