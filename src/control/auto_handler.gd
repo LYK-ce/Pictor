@@ -43,6 +43,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		EventBus.cmd_send.emit(id,
 			MessageBuilder.build_auto_push_goto(real.x, real.y))
 
+	# 通知高亮
+	EventBus.goto_issued.emit(real.x, real.y)
 	get_viewport().set_input_as_handled()
 
 

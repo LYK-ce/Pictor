@@ -1,20 +1,17 @@
 ## Presented by KeJi
-## Date ： 2026-07-29
+## Date: 2026-08-02
 ##
-## InputIndicator — Goto 模式 tile 高亮框
-## 挂载在 Renderer2D 下，监听 mode_transited，
-## Goto 时显示绿色半透明高亮框跟随鼠标吸附 tile。
+## InputIndicator — Goto 目标点高亮
+## 监听 goto_issued，在目标 tile 上短暂高亮后淡出。
 
 extends Node2D
 
-enum State { IDLE, ACTIVE }
-var _state := State.IDLE
-
 var _highlight: ColorRect
+var _tween: Tween
 
 
 func _ready() -> void:
-	EventBus.mode_transited.connect(_on_mode_transited)
+	EventBus.goto_issued.connect(_on_goto_issued)
 	_Create_Highlight()
 
 
@@ -26,18 +23,18 @@ func _Create_Highlight() -> void:
 	add_child(_highlight)
 
 
-func _on_mode_transited(mode: int) -> void:
-	if mode == AppStateResource.Mode.GOTO:
-		_state = State.ACTIVE
-		_highlight.visible = true
-	else:
-		_state = State.IDLE
-		_highlight.visible = false
-
-
-func _process(_delta: float) -> void:
-	if _state != State.ACTIVE:
-		return
-	var mouse_pos := get_global_mouse_position()
-	var tile := CoordUtils.game_to_tile(mouse_pos)
+func _on_goto_issued(x: float, y: float) -> void:
+	# 真实世界(米) → 游戏坐标 → 吸附 tile 中心
+	var game_pos := CoordUtils.real_to_game(x, y)
+	var tile := CoordUtils.game_to_tile(game_pos)
 	_highlight.position = CoordUtils.tile_to_game(tile.x, tile.y) - _highlight.size / 2.0
+
+	# 显示 + 淡出动画
+	_highlight.visible = true
+	_highlight.modulate.a = 1.0
+	if _tween:
+		_tween.kill()
+	_tween = create_tween()
+	_tween.tween_interval(0.2)                              # 保持 0.2s
+	_tween.tween_property(_highlight, "modulate:a", 0.0, 0.4)  # 淡出 0.4s
+	_tween.tween_callback(func() -> void: _highlight.visible = false)
