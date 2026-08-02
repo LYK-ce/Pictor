@@ -21,10 +21,10 @@ var _style_auto_selected: StyleBoxFlat
 func _ready() -> void:
 	_style_normal = get_theme_stylebox("panel").duplicate() as StyleBoxFlat
 	_style_selected = _style_normal.duplicate()
-	_style_selected.border_color = Color(0.3, 0.5, 1.0)
+	_style_selected.border_color = Color(1.0, 0.5, 0.3)
 	_style_auto_selected = _style_normal.duplicate()
 	_style_auto_selected.border_color = Color(0.3, 1.0, 0.5)
-	mouse_filter = MOUSE_FILTER_STOP
+	mouse_filter = MOUSE_FILTER_PASS
 func Update(vehicle_id: String, position: String, yaw: String, velocity: String) -> void:
 	_id_label.text = vehicle_id
 	_pos_label.text = position
