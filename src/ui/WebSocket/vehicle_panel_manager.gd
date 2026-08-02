@@ -97,9 +97,9 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 
 
 func _update_selection() -> void:
-	for id in _panels:
-		var is_manual := id == app_state.manual_target
-		var is_auto := app_state.selected_ids.has(id)
+	for id: String in _panels:
+		var is_manual: bool = id == app_state.manual_target
+		var is_auto: bool = app_state.selected_ids.has(id)
 
 		_panels[id].set_selected(is_manual)
 		_panels[id].set_auto_selected(is_auto)
