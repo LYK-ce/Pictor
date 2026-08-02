@@ -1,11 +1,11 @@
 extends Node
 ## Presented by KeJi
-## Date: 2026-06-08
+## Date: 2026-08-02
 ##
-## InputHandler — 键盘输入 → cmd 指令
-## 捕获 WASD / Space，通过内部信号 ctrl_input 发送 cmd 指令。
+## ManualHandler — 手动控制：键盘 WASD → cmd_send(manual_target)
+## 捕获 WASD / Space，转换为 manual cmd，发送给手动操控车辆。
 
-signal ctrl_input(cmd: Dictionary)
+@export var app_state: AppStateResource
 
 const _KEY_MAP := {
 	KEY_W: "forward",
@@ -27,7 +27,11 @@ func _input(event: InputEvent) -> void:
 	if not _KEY_MAP.has(key_event.keycode):
 		return
 
+	# target 决策：无手动车则忽略
+	if app_state.manual_target.is_empty():
+		return
+
+	var cmd := MessageBuilder.build_manual_stop()
 	if key_event.pressed:
-		ctrl_input.emit(MessageBuilder.build_manual_action(_KEY_MAP[key_event.keycode]))
-	else:
-		ctrl_input.emit(MessageBuilder.build_manual_stop())
+		cmd = MessageBuilder.build_manual_action(_KEY_MAP[key_event.keycode])
+	EventBus.cmd_send.emit(app_state.manual_target, cmd)
