@@ -33,6 +33,10 @@ func _on_panel_clicked(vehicle_id: String, ctrl_held: bool) -> void:
 
 	# Ctrl+点手动车 → 切换回 auto，加入队列
 	if vehicle_id == app_state.manual_target:
+		var panel = _panels.get(vehicle_id)
+		if panel:
+			panel.set_pressed(false)
+			panel.set_manual_checked(false)
 		app_state.manual_target = ""
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
 		app_state.selected_ids.append(vehicle_id)
@@ -65,6 +69,10 @@ func _on_take_control_toggled(vehicle_id: String, pressed: bool) -> void:
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_manual())
 	else:
 		# —— 切换为 Auto ——
+		var panel = _panels.get(vehicle_id)
+		if panel:
+			panel.set_pressed(false)
+			panel.set_manual_checked(false)
 		app_state.manual_target = ""
 		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
 		# 不加入 selected_ids，变未选中
