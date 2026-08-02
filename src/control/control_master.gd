@@ -24,10 +24,9 @@ func _on_mode_transited(mode: int) -> void:
 
 
 func _on_ctrl_input(cmd: Dictionary) -> void:
-	if app_state.selected_id.is_empty():
+	if app_state.manual_target.is_empty():
 		return
-	EventBus.cmd_send.emit(app_state.selected_id, cmd)
-
+	EventBus.cmd_send.emit(app_state.manual_target, cmd)
 
 func _input(event: InputEvent) -> void:
 	if _state != State.GOTO:
