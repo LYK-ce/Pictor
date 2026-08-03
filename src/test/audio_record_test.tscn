@@ -14,6 +14,8 @@ script = ExtResource("1_test")
 
 [node name="AudioInput" parent="." instance=ExtResource("2_test")]
 
+[node name="PlaybackPlayer" type="AudioStreamPlayer" parent="."]
+
 [node name="RecordButton" type="Button" parent="."]
 layout_mode = 1
 anchors_preset = 8

@@ -7,17 +7,17 @@
 
 extends Control
 
-## 麦克风输入节点（AudioStreamPlayer，stream = AudioStreamMicrophone, bus = Record）
+## 麦克风输入节点（AudioStreamPlayer，stream = AudioStreamMicrophone, bus = Record，常驻录音）
 @onready var audio_input := $AudioInput
 
 ## 录音按钮
 @onready var record_button := $RecordButton
 
+## 回放节点（默认 Master bus，播放录音用）
+@onready var playback_player := $PlaybackPlayer
+
 ## Record bus 上的 AudioEffectRecord 效果器
 var effect: AudioEffectRecord
-
-## 麦克风流（录音时使用）
-var mic_stream: AudioStreamMicrophone
 
 ## 录音采样率（Whisper 标准输入 16kHz）
 const MIX_RATE := 16000
@@ -26,18 +26,14 @@ const MIX_RATE := 16000
 func _ready() -> void:
 	var idx := AudioServer.get_bus_index("Record")
 	effect = AudioServer.get_bus_effect(idx, 0)
-	mic_stream = audio_input.stream as AudioStreamMicrophone
 	record_button.button_down.connect(_On_Record_Button_Down)
 	record_button.button_up.connect(_On_Record_Button_Up)
-	audio_input.finished.connect(_On_Audio_Finished)
 
 
 ## 按下：开始录音
 func _On_Record_Button_Down() -> void:
-	if audio_input.stream != mic_stream:
-		audio_input.stop()
-		audio_input.stream = mic_stream
-		audio_input.play()
+	if playback_player.playing:
+		playback_player.stop()
 	effect.set_recording_active(true)
 	record_button.text = "Recording..."
 
@@ -56,13 +52,6 @@ func _On_Record_Button_Up() -> void:
 	print("[AudioRecordTest] recorded %d bytes, %d Hz, %s" % [
 		recording.get_data().size(), recording.mix_rate,
 		"mono" if not recording.stereo else "stereo"])
-	audio_input.stop()
-	audio_input.stream = recording
-	audio_input.play()
+	playback_player.stream = recording
+	playback_player.play()
 	record_button.text = "Record"
-
-
-## 播放结束：换回麦克风，便于再次录音
-func _On_Audio_Finished() -> void:
-	audio_input.stream = mic_stream
-	audio_input.play()
