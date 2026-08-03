@@ -18,3 +18,5 @@ signal cmd_send(vehicle_id: String, cmd: Dictionary)
 signal cells_changed(updates: Array)
 signal goto_issued(x: float, y: float)
 signal mode_transited(mode: int)
+signal audio_record_started
+signal audio_record_finished

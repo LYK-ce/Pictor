@@ -24,8 +24,8 @@ func _on_goto_pressed() -> void:
 
 # 按下按钮，开始录音
 func _on_audio_input_button_down() -> void:
-	pass # Replace with function body.
+	EventBus.audio_record_started.emit()
 
 # 松开按钮，结束录音
 func _on_audio_input_button_up() -> void:
-	pass # Replace with function body.
+	EventBus.audio_record_finished.emit()
