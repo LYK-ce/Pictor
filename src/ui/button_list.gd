@@ -20,3 +20,12 @@ func _on_goto_pressed() -> void:
 	else:
 		app_state.mode = AppStateResource.Mode.GOTO
 		print(self.name,'goto button pressed')
+
+
+# 按下按钮，开始录音
+func _on_audio_input_button_down() -> void:
+	pass # Replace with function body.
+
+# 松开按钮，结束录音
+func _on_audio_input_button_up() -> void:
+	pass # Replace with function body.
