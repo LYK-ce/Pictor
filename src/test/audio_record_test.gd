@@ -19,10 +19,9 @@ extends Control
 ## Record bus 上的 AudioEffectRecord 效果器
 var effect: AudioEffectRecord
 
-## 录音采样率（Whisper 标准输入 16kHz）
-const MIX_RATE := 16000
-
-
+## 录音采样率（录制默认 44100Hz，由 AudioEffectRecord 决定）
+## 注意：不要在录音后修改 mix_rate/stereo 元数据，会导致播放速度/声道错乱
+## Whisper API 支持任意采样率，内部自动重采样，无需提前转换
 func _ready() -> void:
 	var idx := AudioServer.get_bus_index("Record")
 	effect = AudioServer.get_bus_effect(idx, 0)
@@ -46,9 +45,7 @@ func _On_Record_Button_Up() -> void:
 		printerr("[AudioRecordTest] No recording data (microphone not ready?)")
 		record_button.text = "Record"
 		return
-	recording.set_mix_rate(MIX_RATE)
-	recording.set_format(AudioStreamWAV.FORMAT_16_BITS)
-	recording.set_stereo(false)
+	# 不修改 recording 的 mix_rate/format/stereo（保持录制原始格式）
 	print("[AudioRecordTest] recorded %d bytes, %d Hz, %s" % [
 		recording.get_data().size(), recording.mix_rate,
 		"mono" if not recording.stereo else "stereo"])
