@@ -26,9 +26,7 @@ const MIX_RATE := 16000
 func _ready() -> void:
 	var idx := AudioServer.get_bus_index("Record")
 	effect = AudioServer.get_bus_effect(idx, 0)
-	mic_stream = AudioStreamMicrophone.new()
-	audio_input.stream = mic_stream
-	audio_input.bus = "Record"
+	mic_stream = audio_input.stream as AudioStreamMicrophone
 	record_button.button_down.connect(_On_Record_Button_Down)
 	record_button.button_up.connect(_On_Record_Button_Up)
 	audio_input.finished.connect(_On_Audio_Finished)
@@ -36,8 +34,10 @@ func _ready() -> void:
 
 ## 按下：开始录音
 func _On_Record_Button_Down() -> void:
-	if audio_input.playing:
+	if audio_input.stream != mic_stream:
 		audio_input.stop()
+		audio_input.stream = mic_stream
+		audio_input.play()
 	effect.set_recording_active(true)
 	record_button.text = "Recording..."
 
@@ -56,6 +56,7 @@ func _On_Record_Button_Up() -> void:
 	print("[AudioRecordTest] recorded %d bytes, %d Hz, %s" % [
 		recording.get_data().size(), recording.mix_rate,
 		"mono" if not recording.stereo else "stereo"])
+	audio_input.stop()
 	audio_input.stream = recording
 	audio_input.play()
 	record_button.text = "Record"
@@ -64,3 +65,4 @@ func _On_Record_Button_Up() -> void:
 ## 播放结束：换回麦克风，便于再次录音
 func _On_Audio_Finished() -> void:
 	audio_input.stream = mic_stream
+	audio_input.play()

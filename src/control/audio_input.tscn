@@ -2,5 +2,10 @@
 
 [ext_resource type="Script" uid="uid://bd27l3w0tapb2" path="res://src/control/audio_input.gd" id="1_5y8tl"]
 
+[sub_resource type="AudioStreamMicrophone" id="AudioStreamMicrophone_1"]
+
 [node name="AudioInput" type="AudioStreamPlayer" unique_id=1964459241]
+stream = SubResource("AudioStreamMicrophone_1")
+autoplay = true
+bus = &"Record"
 script = ExtResource("1_5y8tl")
