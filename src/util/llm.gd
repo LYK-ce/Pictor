@@ -14,8 +14,8 @@ extends Node
 @export var api_url := "https://api.deepseek.com/chat/completions"
 ## API Key（DeepSeek 平台申请，场景面板中填写；为空时跳过调用并提示）
 @export var api_key := ""
-## 模型名（DeepSeek 当前模型：deepseek-v4-flash / deepseek-v4-pro）
-@export var model := "deepseek-v4-flash"
+## 模型名（DeepSeek 官方示例：deepseek-v4-pro；flash 版为 deepseek-v4-flash）
+@export var model := "deepseek-v4-pro"
 ## 请求超时（秒）
 @export var timeout := 15.0
 
@@ -54,7 +54,8 @@ func generate_cmds(text: String) -> void:
 			{"role": "user", "content": text},
 		],
 		"stream": false,
-		"temperature": 0.1,
+		"thinking": {"type": "enabled"},
+		"reasoning_effort": "high",
 	}
 	var headers := [
 		"Content-Type: application/json",
