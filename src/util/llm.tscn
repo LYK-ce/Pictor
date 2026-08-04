@@ -1,0 +1,8 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/util/llm.gd" id="1_llm"]
+
+[node name="LLM" type="Node"]
+script = ExtResource("1_llm")
+
+[node name="HTTPRequest" type="HTTPRequest" parent="."]
