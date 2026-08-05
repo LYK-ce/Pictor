@@ -37,9 +37,7 @@ const SYSTEM_PROMPT := """你是 Pictor 小车控制系统的指令翻译器。�
 func _ready() -> void:
 	_http.timeout = timeout
 	_http.request_completed.connect(_on_request_completed)
-	# 阶段一验证：配置 api_key 后运行项目即自动发起一次测试调用（接入 UI 后移除）
-	if api_key != "":
-		generate_cmds("前进三米然后左转")
+	# 不自动发送：等待外部调用 generate_cmds()（如 TextInput 发送按钮）
 
 
 ## 发起一次指令翻译请求（异步，结果经 _on_request_completed 回调）

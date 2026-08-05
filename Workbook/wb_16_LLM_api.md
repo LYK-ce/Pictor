@@ -19,3 +19,11 @@
 - 验证：godot --headless --import + --quit-after 5 无错误；本地 mock HTTP 服务器端到端测试通过（请求/响应/解析/print 全链路）
 - 待办：用户填 api_key 后真实 API 验证；阶段二接 EventBus.cmd_send 广播（app_state.selected_ids，注释已定）
 
+### 2026-08-05 TextInput 接线 ✅ + result=13 解决
+- result=13 (RESULT_DISCONNECTED) 根因：请求体缺 DeepSeek v4 必填 thinking/reasoning_effort 参数 → 服务器断连
+- 修复：请求体对齐官方 SDK 示例（model=deepseek-v4-pro, thinking.enabled, reasoning_effort=high）→ 用户本地实测通过（commit 684f6b7）
+- 模型输出实测："前进三米然后左转" → [mode switch_to_auto, auto goto(3,0), mode switch_to_manual, manual spin_left]（thinking 模型推理自洽；⚠️ goto 是绝对坐标，模型假设原点朝 x 轴——prompt 语义待调优）
+- 用户新建 text_input UI（src/ui/text_input.tscn，挂 main.tscn UI/CanvasLayer 下，commit 1e80ef5/c6be557）
+- 本次（未提交）：llm.gd 移除 _ready 自动发送；text_input.gd 实现 _on_send_pressed → util.llm.generate_cmds(text)（@export util: Util + @onready TextEdit as TextEdit + KeJi 头注释）；main.tscn TextInput 实例注入 util = NodePath("../../Util")
+- 验证：headless EXIT=0 无脚本错误
+
