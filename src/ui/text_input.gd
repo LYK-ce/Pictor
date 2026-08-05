@@ -6,8 +6,8 @@
 
 extends Control
 
-## 工具箱引用（场景面板拖入 Main/Util）
-@export var util: Util
+## 工具箱引用（运行时获取，Main/Util）
+@onready var util := get_node("../../Util") as Util
 
 @onready var _text_edit := $PanelContainer/HBoxContainer/TextEdit as TextEdit
 
@@ -16,5 +16,7 @@ extends Control
 func _on_send_pressed() -> void:
 	var text := _text_edit.text.strip_edges()
 	if text == "":
+		return
+	if util == null:
 		return
 	util.llm.generate_cmds(text)

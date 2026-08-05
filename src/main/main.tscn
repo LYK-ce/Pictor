@@ -32,7 +32,6 @@ texture_filter = 1
 [node name="Button" parent="UI" unique_id=471177575 instance=ExtResource("7_frqgp")]
 
 [node name="TextInput" parent="UI" unique_id=805496097 instance=ExtResource("8_w0wra")]
-util = NodePath("../../Util")
 
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
 
