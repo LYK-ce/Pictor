@@ -20,3 +20,4 @@ signal goto_issued(x: float, y: float)
 signal mode_transited(mode: int)
 signal audio_record_started
 signal audio_record_finished
+signal command_requested(text: String)

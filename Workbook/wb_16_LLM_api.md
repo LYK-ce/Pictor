@@ -27,3 +27,11 @@
 - 本次（未提交）：llm.gd 移除 _ready 自动发送；text_input.gd 实现 _on_send_pressed → util.llm.generate_cmds(text)（@export util: Util + @onready TextEdit as TextEdit + KeJi 头注释）；main.tscn TextInput 实例注入 util = NodePath("../../Util")
 - 验证：headless EXIT=0 无脚本错误
 
+### 2026-08-05 LLM 下发链路（阶段二）✅
+- 设计定案：TextInput 纯 UI（emit 信号）；AutoHandler 编排（接收输入→调 LLM→收结果→广播下发）；LLM 保持纯工具
+- EventBus 新增 `command_requested(text: String)`；llm.gd 新增 `cmds_generated(cmds)` / `request_failed(msg)` 信号（_parse_cmds 失败返回 null 以区分空数组）
+- text_input.gd：发送 → emit command_requested → 清空输入框；移除 util 引用
+- auto_handler.gd：@onready util := get_node("../../Util") as Util；_on_command_requested → generate_cmds；_on_cmds_generated → for selected_ids × cmds → EventBus.cmd_send（空数组/未选车不下发仅日志）
+- 🔴 踩坑：AutoHandler._ready 时 util.llm 的 @onready 尚未赋值（树序 ControlMaster 先于 Util ready）→ 连接被跳过 → 修复：`_connect_llm_signals.call_deferred()`（帧末再连）
+- 验证：mock 端到端通过——command_requested("左转") → LLM(mock) → [LLM] → test_car_0 ×2 条指令广播
+
