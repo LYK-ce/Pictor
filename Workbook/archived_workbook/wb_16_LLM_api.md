@@ -3,8 +3,8 @@
 ## meta
 - task: task_16_LLM_api
 - start: 2026-07-29
-- end:
-- status: in-progress
+- end: 2026-08-06
+- status: completed (archived)
 
 ## 进度
 
@@ -35,3 +35,9 @@
 - 🔴 踩坑：AutoHandler._ready 时 util.llm 的 @onready 尚未赋值（树序 ControlMaster 先于 Util ready）→ 连接被跳过 → 修复：`_connect_llm_signals.call_deferred()`（帧末再连）
 - 验证：mock 端到端通过——command_requested("左转") → LLM(mock) → [LLM] → test_car_0 ×2 条指令广播
 
+
+## 归档
+- 2026-08-06 归档：阶段二（LLM 下发链路）完成，任务整体达成目标（用户输入 → LLM → cmd_send 广播）。
+- ⚠️ 实现与任务文件规划脱节：实际为单文件 `src/util/llm.gd`（Util 门面容器模式），而非规划的 `src/LLM/` 模块化（llm_config/llm_client/llm_prompt/llm_parser），子任务 checkbox 均未勾选。
+- 遗留待办：① 用户填 api_key 后真实 API 验证 ② prompt 语义调优（goto 为绝对坐标、模型假设原点朝 x 轴）③ 文件头注释仍写"阶段一"已过时。
+- 依赖：task_15 (Protocol/MessageBuilder) + EventBus cmd_send 链路。
