@@ -78,6 +78,7 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 	if response == null or not response is Dictionary:
 		printerr("[LLM] 响应不是合法 JSON")
 		return
+	print(response)
 	var content: String = response["choices"][0]["message"]["content"]
 	print("[LLM] 原始响应: ", content)
 	var cmds := _parse_cmds(content)

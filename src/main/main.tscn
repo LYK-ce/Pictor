@@ -8,8 +8,8 @@
 [ext_resource type="PackedScene" uid="uid://g7bchdk3ykyy" path="res://src/control/control.tscn" id="6_ctrl"]
 [ext_resource type="PackedScene" uid="uid://bhw00pp3bnwb4" path="res://src/camera/camera_2d.tscn" id="7_cam"]
 [ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button_list.tscn" id="7_frqgp"]
-[ext_resource type="PackedScene" path="res://src/test/test_ws_server.tscn" id="9_km7bn"]
 [ext_resource type="PackedScene" path="res://src/util/util.tscn" id="8_util"]
+[ext_resource type="PackedScene" path="res://src/test/test_ws_server.tscn" id="9_km7bn"]
 [ext_resource type="Resource" path="res://Assets/2D/map_chunk_0_0.tres" id="10_erw1m"]
 
 [node name="Main" type="Node" unique_id=602051622]
@@ -32,7 +32,7 @@ texture_filter = 1
 
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
 
-[node name="Util" parent="." instance=ExtResource("8_util")]
+[node name="Util" parent="." unique_id=1079994098 instance=ExtResource("8_util")]
 
 [node name="TestWSServer" parent="." unique_id=1866517460 instance=ExtResource("9_km7bn")]
 send_map = true

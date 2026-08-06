@@ -1,8 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://bndia1vc5oo3p"]
 
-[ext_resource type="Script" path="res://src/util/llm.gd" id="1_llm"]
+[ext_resource type="Script" uid="uid://ctfwbid8r21yx" path="res://src/util/llm.gd" id="1_llm"]
 
-[node name="LLM" type="Node"]
+[node name="LLM" type="Node" unique_id=435553947]
 script = ExtResource("1_llm")
+api_key = "sk-c2398eab213a4e668b8d71cf109e5002"
 
-[node name="HTTPRequest" type="HTTPRequest" parent="."]
+[node name="HTTPRequest" type="HTTPRequest" parent="." unique_id=1305341664]
