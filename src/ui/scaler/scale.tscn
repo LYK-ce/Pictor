@@ -1,5 +1,8 @@
 [gd_scene format=3 uid="uid://ci3b8tr6nfigl"]
 
+[ext_resource type="Script" path="res://src/ui/scaler/scale.gd" id="1_scale"]
+[ext_resource type="Script" path="res://src/ui/scaler/axis_ruler.gd" id="2_axis"]
+
 [node name="Scale" type="Control" unique_id=1128433242]
 layout_mode = 3
 anchors_preset = 15
@@ -8,6 +11,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+script = ExtResource("1_scale")
 
 [node name="PanelContainer" type="PanelContainer" parent="." unique_id=1058355019]
 layout_mode = 1
@@ -24,6 +28,10 @@ size_flags_vertical = 1
 
 [node name="x_axis" type="Control" parent="." unique_id=402663477]
 custom_minimum_size = Vector2(0, 24)
+script = ExtResource("2_axis")
+is_x_axis = true
+z_index = 1
+offset_bottom = 24.0
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -31,6 +39,9 @@ grow_horizontal = 2
 
 [node name="y_axis" type="Control" parent="." unique_id=2041510568]
 custom_minimum_size = Vector2(24, 0)
+script = ExtResource("2_axis")
+is_x_axis = false
+offset_right = 24.0
 layout_mode = 1
 anchors_preset = 9
 anchor_bottom = 1.0
