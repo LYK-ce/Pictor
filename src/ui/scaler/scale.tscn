@@ -7,6 +7,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
 [node name="PanelContainer" type="PanelContainer" parent="." unique_id=1058355019]
 layout_mode = 1
@@ -22,12 +23,14 @@ layout_mode = 2
 size_flags_vertical = 1
 
 [node name="x_axis" type="Control" parent="." unique_id=402663477]
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 grow_horizontal = 2
 
 [node name="y_axis" type="Control" parent="." unique_id=2041510568]
+custom_minimum_size = Vector2(0, 24)
 layout_mode = 1
 anchors_preset = 9
 anchor_bottom = 1.0
