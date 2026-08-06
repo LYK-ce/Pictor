@@ -10,6 +10,11 @@
 class_name LLM
 extends Node
 
+## 翻译成功（非空或空数组），由调用方决定是否下发
+signal cmds_generated(cmds: Array)
+## 请求/解析失败
+signal request_failed(msg: String)
+
 ## OpenAI 兼容 API endpoint（DeepSeek: https://api.deepseek.com/chat/completions）
 @export var api_url := "https://api.deepseek.com/chat/completions"
 ## API Key（DeepSeek 平台申请，场景面板中填写；为空时跳过调用并提示）
@@ -37,9 +42,7 @@ const SYSTEM_PROMPT := """你是 Pictor 小车控制系统的指令翻译器。�
 func _ready() -> void:
 	_http.timeout = timeout
 	_http.request_completed.connect(_on_request_completed)
-	# 阶段一验证：配置 api_key 后运行项目即自动发起一次测试调用（接入 UI 后移除）
-	if api_key != "":
-		generate_cmds("前进三米然后左转")
+	# 不自动发送：等待外部调用 generate_cmds()（如 TextInput 发送按钮）
 
 
 ## 发起一次指令翻译请求（异步，结果经 _on_request_completed 回调）
@@ -70,23 +73,32 @@ func generate_cmds(text: String) -> void:
 func _on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS:
 		printerr("[LLM] 请求失败 result=", result)
+		request_failed.emit("请求失败 result=%d" % result)
 		return
 	if response_code != 200:
 		printerr("[LLM] HTTP ", response_code, ": ", body.get_string_from_utf8())
+		request_failed.emit("HTTP %d" % response_code)
 		return
 	var response = JSON.parse_string(body.get_string_from_utf8())
 	if response == null or not response is Dictionary:
 		printerr("[LLM] 响应不是合法 JSON")
+		request_failed.emit("响应不是合法 JSON")
 		return
 	print(response)
 	var content: String = response["choices"][0]["message"]["content"]
 	print("[LLM] 原始响应: ", content)
-	var cmds := _parse_cmds(content)
+	var cmds = _parse_cmds(content)
+	if cmds == null:
+		printerr("[LLM] 输出解析失败")
+		request_failed.emit("LLM 输出解析失败")
+		return
 	print("[LLM] 解析结果: ", cmds)
+	cmds_generated.emit(cmds)
 
 
 ## 解析 LLM 输出 → cmd 数组（先试直接 JSON，失败再提取 ```json 代码块）
-func _parse_cmds(content: String) -> Array:
+## 返回 null 表示解析失败（区别于模型输出空数组 []）
+func _parse_cmds(content: String):
 	var parsed = JSON.parse_string(content)
 	if parsed is Array:
 		return parsed
@@ -97,4 +109,4 @@ func _parse_cmds(content: String) -> Array:
 		if parsed is Array:
 			return parsed
 	printerr("[LLM] 输出解析失败，原文: ", content)
-	return []
+	return null

@@ -1,16 +1,62 @@
 extends Node2D
 ## Presented by KeJi
-## Date: 2026-08-02
+## Date: 2026-08-05
 ##
-## AutoHandler — 自动控制：右键 Goto 广播 + 瞬态命令状态机
-## 默认态：右键地图 → Goto 广播给 selected_ids
+## AutoHandler — 自动控制编排：
+## 1. 右键 Goto 广播给 selected_ids（原有）
+## 2. LLM 指令编排：监听 EventBus.command_requested → 调 util.llm.generate_cmds
+##    → 接收 cmds_generated → 广播下发（与 Goto 同层）
 ## 瞬态态：点命令按钮（如巡逻）后等待目标点，左键执行 / 右键取消
 
 @export var app_state: AppStateResource
 
+## 工具箱引用（运行时获取，Main/Util）
+@onready var util := get_node("../../Util") as Util
+
 # 瞬态命令扩展点：点按钮进入等待态，执行完自动回 NONE
 enum PendingAction { NONE, PATROL }
 var _pending_action := PendingAction.NONE
+
+
+func _ready() -> void:
+	EventBus.command_requested.connect(_on_command_requested)
+	# 延迟到所有节点 _ready 完成后连接 LLM 信号（util.llm 的 @onready 此时才赋值）
+	_connect_llm_signals.call_deferred()
+
+
+func _connect_llm_signals() -> void:
+	if util == null or util.llm == null:
+		printerr("[AutoHandler] util/llm 不可用，LLM 信号未连接")
+		return
+	util.llm.cmds_generated.connect(_on_cmds_generated)
+	util.llm.request_failed.connect(_on_request_failed)
+
+
+## 收到 TextInput 等输入源的指令请求 → 调用 LLM 翻译
+func _on_command_requested(text: String) -> void:
+	if util == null or util.llm == null:
+		printerr("[AutoHandler] util/llm 不可用")
+		return
+	util.llm.generate_cmds(text)
+
+
+## LLM 翻译成功 → 广播下发（空数组 / 未选中车辆时不下发，仅日志）
+func _on_cmds_generated(cmds: Array) -> void:
+	if cmds.is_empty():
+		print("[AutoHandler] LLM 无有效指令，不下发")
+		return
+	if app_state.selected_ids.is_empty():
+		print("[AutoHandler] 未选中车辆，指令不下发")
+		return
+	for id: String in app_state.selected_ids:
+		for cmd: Dictionary in cmds:
+			EventBus.cmd_send.emit(id, cmd)
+			print("[LLM] → ", id, ": ", JSON.stringify(cmd))
+
+
+## LLM 请求失败 → 仅日志
+func _on_request_failed(msg: String) -> void:
+	printerr("[AutoHandler] LLM 请求失败: ", msg)
 
 
 func _unhandled_input(event: InputEvent) -> void:

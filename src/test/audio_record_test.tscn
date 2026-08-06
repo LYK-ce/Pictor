@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3 uid="uid://c7kx5h1tq2w9m"]
+[gd_scene format=3 uid="uid://c7kx5h1tq2xam"]
 
 [ext_resource type="Script" uid="uid://ehfmhn4bz1thl" path="res://src/test/audio_record_test.gd" id="1_test"]
 [ext_resource type="PackedScene" uid="uid://bxig6imgkxdar" path="res://src/control/audio_input.tscn" id="2_test"]
