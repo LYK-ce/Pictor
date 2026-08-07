@@ -274,12 +274,14 @@ func _Handle_Control(action: int, param: int) -> void:
 
 
 ## TASK_SET 整体替换：丢弃当前队列（含正在执行的任务），从头执行新队列
-## 任务为自动执行语义：收到即切回 AUTO 模式
+## 语义对齐 Rust robot.rs：Manual 模式下静默忽略 Auto 命令（车开机默认 AUTO）
 func _Handle_Task_Set(missions: Array) -> void:
+	if _op_mode != OpMode.AUTO:
+		print("[" + vehicle_id + "] ignore task_set: current mode is MANUAL")
+		return
 	_vx = 0.0
 	_vy = 0.0
 	_turn_rate = 0.0
-	_op_mode = OpMode.AUTO
 	_exec_state = ExecState.IDLE
 	_task_queue.clear()
 	_task_queue.assign(missions)

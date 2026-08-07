@@ -89,12 +89,17 @@ static func Decode_Map_Full(payload: PackedByteArray) -> Dictionary:
 # ─── ORION_MAP_DELTA (msgid 3) — 6B + 9B/entry ────────────────
 
 static func Encode_Map_Delta(time_boot_ms: int, entries: Array) -> PackedByteArray:
+	var count := entries.size()
+	if count > 65535:
+		printerr("[OrionMessages] map_delta entries exceed u16 max: ", count, " — truncated")
+		count = 65535
 	var buf := PackedByteArray()
-	buf.resize(6 + 9 * entries.size())
+	buf.resize(6 + 9 * count)
 	OrionFrame.Write_U32_BE(buf, 0, time_boot_ms)
-	OrionFrame.Write_U16_BE(buf, 4, entries.size())
+	OrionFrame.Write_U16_BE(buf, 4, count)
 	var off := 6
-	for e in entries:
+	for i in range(count):
+		var e = entries[i]
 		OrionFrame.Write_S32_BE(buf, off, e.get("gx", 0))
 		OrionFrame.Write_S32_BE(buf, off + 4, e.get("gy", 0))
 		buf[off + 8] = e.get("state", ProtocolDef.CELL_FREE)
@@ -141,12 +146,21 @@ static func Decode_Manual_Control(payload: PackedByteArray) -> Dictionary:
 # ─── ORION_TASK_SET (msgid 5) — 1B + 9B/mission ───────────────
 
 static func Encode_Task_Set(missions: Array) -> PackedByteArray:
+	var count := missions.size()
+	if count > 255:
+		printerr("[OrionMessages] task_set missions exceed u8 max: ", count, " — truncated")
+		count = 255
 	var buf := PackedByteArray()
-	buf.resize(1 + 9 * missions.size())
-	buf[0] = missions.size()
+	buf.resize(1 + 9 * count)
+	buf[0] = count
 	var off := 1
-	for m in missions:
-		buf[off] = m.get("type", ProtocolDef.MISSION_TYPE_GOTO)
+	for i in range(count):
+		var m = missions[i]
+		# mission type 归一化：LLM 可能输出字符串 "goto"（防御性）
+		var mt = m.get("type", ProtocolDef.MISSION_TYPE_GOTO)
+		if mt is String:
+			mt = ProtocolDef.MISSION_TYPE_GOTO
+		buf[off] = int(mt)
 		OrionFrame.Write_F32_BE(buf, off + 1, m.get("x", 0.0))
 		OrionFrame.Write_F32_BE(buf, off + 5, m.get("y", 0.0))
 		off += 9

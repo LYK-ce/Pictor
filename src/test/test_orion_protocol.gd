@@ -15,6 +15,7 @@ func _init() -> void:
 	ok = ok and _test_build_cmd()
 	ok = ok and _test_parser_dispatch()
 	ok = ok and _test_endianness()
+	ok = ok and _test_llm_string_type()
 	print("=== ALL PASS: ", ok, " ===")
 	quit(0 if ok else 1)
 
@@ -167,6 +168,35 @@ func _test_parser_dispatch() -> bool:
 	if MessageParser.parse_orion_frame(bad).ok:
 		print("FAIL parser unknown msgid accepted"); return false
 	print("PASS parser_dispatch"); return true
+
+
+func _test_llm_string_type() -> bool:
+	# LLM 输出字符串 mission type "goto" → 归一化为 0，正常编码下发
+	var llm_cmd := {"cmd": "auto", "action": "push", "missions": [{"type": "goto", "x": 3.0, "y": 5.0}]}
+	var orion_cmd := MessageBuilder.build_from_llm(llm_cmd)
+	if orion_cmd.is_empty() or orion_cmd.msgid != ProtocolDef.MSGID_TASK_SET:
+		print("FAIL build_from_llm auto: ", orion_cmd); return false
+	var frame := OrionMessages.Build_Cmd(orion_cmd)
+	if frame.is_empty():
+		print("FAIL llm string type frame empty"); return false
+	var dec := OrionFrame.Decode_Frame(frame)
+	var ts := OrionMessages.Decode_Task_Set(dec.payload)
+	if ts.count != 1 or ts.missions[0].type != 0:
+		print("FAIL llm string type normalized: ", ts); return false
+	if absf(ts.missions[0].x - 3.0) > 0.0001 or absf(ts.missions[0].y - 5.0) > 0.0001:
+		print("FAIL llm mission coords"); return false
+	# 混合指令顺序：auto push 在 manual forward 之前，逐条转换保持顺序
+	var mixed := [
+		{"cmd": "auto", "action": "push", "missions": [{"type": "goto", "x": 1.0, "y": 1.0}]},
+		{"cmd": "manual", "action": "forward", "speed": 60},
+	]
+	var first := MessageBuilder.build_from_llm(mixed[0])
+	if first.msgid != ProtocolDef.MSGID_TASK_SET:
+		print("FAIL mixed first: ", first); return false
+	var second := MessageBuilder.build_from_llm(mixed[1])
+	if second.msgid != ProtocolDef.MSGID_MANUAL_CONTROL or second.action != ProtocolDef.ACTION_FORWARD or second.param != 60:
+		print("FAIL mixed second: ", second); return false
+	print("PASS llm_string_type"); return true
 
 
 # ─── 大端字节序断言（与 Rust 端字节逐一比对）──────────────────────

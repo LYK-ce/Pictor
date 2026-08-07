@@ -70,7 +70,9 @@ static func build_from_llm(cmd: Dictionary) -> Dictionary:
 			var mode_action: String = cmd.get("action", "")
 			if mode_action == "switch_to_manual":
 				return build_mode_switch_to_manual()
-			return build_mode_switch_to_auto()
+			if mode_action == "switch_to_auto":
+				return build_mode_switch_to_auto()
+			return {}  # 未知 mode action，拒绝下发
 		"auto":
 			var auto_action: String = cmd.get("action", "")
 			if auto_action == "cancel":
@@ -90,8 +92,22 @@ static func build_auto_push_goto(x: float, y: float) -> Dictionary:
 
 
 ## 一次下发多条任务（LLM 指令聚合用），整体替换语义
+## mission type 归一化：LLM 输出字符串 "goto" → 整数 MISSION_TYPE_GOTO（防御性）
 static func build_task_set(missions: Array) -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_TASK_SET, "missions": missions}
+	var normalized: Array = []
+	for m in missions:
+		normalized.append({
+			"type": _Normalize_Mission_Type(m.get("type", ProtocolDef.MISSION_TYPE_GOTO)),
+			"x": m.get("x", 0.0),
+			"y": m.get("y", 0.0),
+		})
+	return {"msgid": ProtocolDef.MSGID_TASK_SET, "missions": normalized}
+
+
+static func _Normalize_Mission_Type(t) -> int:
+	if t is String:
+		return ProtocolDef.MISSION_TYPE_GOTO
+	return int(t)
 
 
 ## count = 0 → 取消全部任务，停车待命
