@@ -29,6 +29,20 @@ task_20_protocol_update：将 Pictor 现有 WebSocket 协议（JSON + 二进制 
 - 修复：orion_frame.gd 新增 Read_U16/S16/U32/S32/F32_BE + Write_* 大端 helper（float 用 encode_float 小端写+反转），帧编解码与 orion_messages.gd 全部替换为 BE helper
 - 影响面：上行（pose/map_full/map_delta 解析）+ 下行（manual_control/task_set 编码）全部覆盖
 - 验证：单元测试新增 endianness 断言（len [00 00 00 05]、65556 Rust 帧、f32 1.5→[3F C0 00 00]、i16 -50→[FF CE] 等）9/9 PASS；端到端 PASS
+## Code review 修复（2026-08-07）
+- 🔴-1 LLM mission type：字符串 "goto" → 0 归一化（build_task_set + Encode_Task_Set 双层防御），LLM 自然语言指令可正常下发
+- 🔴-2 TASK_SET 语义：模拟端对齐 Rust robot.rs（Manual 忽略 Auto 命令）；**决策：车开机默认 AUTO**（需 Rust 端 mode.rs 默认值 Manual→Auto，待改）
+- 🔴-3 指令顺序：auto_handler 全 goto 才聚合为一条 TASK_SET，混合指令按 LLM 原始顺序逐条下发
+- 🟡 mode 未知 action 拒绝下发；task_set/map_delta count 钳制（255/65535）；beep 映射已存在（review 误报）
+- 测试：单元 10/10 PASS（新增 llm_string_type：字符串 type + 混合指令顺序）；e2e PASS（新增队列顺序断言 m1→m2 + Manual 忽略语义适配）；主场景冒烟 0 错误
+- 提交：fca3225（已推送）
+## LLM 任务序列语义对齐（2026-08-07，用户决策后实施）
+- 线上格式确认：TASK_SET 帧（count u8 + 每项 type u8 + x/y f32 BE），无 push/cancel 概念；count=0 取消
+- llm.gd SYSTEM_PROMPT：改为只输出 missions JSON 数组（方案 A），删除 manual/mode/push/cancel 旧格式
+- 删除 MessageBuilder.build_from_llm（旧格式解析，无调用点）
+- auto_handler：LLM missions 数组 → 全部任务合并为一条 TASK_SET 广播
+- 取消（count=0）由 UI 显式触发——当前无此功能，不做（用户指示）
+- 测试：llm_string_type → llm_missions（含与 Rust 字节比对 3.0→40400000）
 ## 阶段
 1. [进行中] 子 agent 代码阅读 → 确定改动清单 → 与用户讨论
 2. [ ] 实施

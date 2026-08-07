@@ -59,29 +59,6 @@ static func build_manual_stop() -> Dictionary:
 	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_STOP, "param": 0}
 
 
-## 旧格式 LLM cmd（{"cmd": "manual"/"mode"/"auto", ...}）→ Orion 语义 Dictionary
-## 用于 auto_handler 聚合 LLM 输出；未知类型返回空 Dictionary
-static func build_from_llm(cmd: Dictionary) -> Dictionary:
-	var cmd_type: String = cmd.get("cmd", "")
-	match cmd_type:
-		"manual":
-			return build_manual_action(cmd.get("action", ""), cmd.get("speed", ProtocolDef.MANUAL_DEFAULT_SPEED))
-		"mode":
-			var mode_action: String = cmd.get("action", "")
-			if mode_action == "switch_to_manual":
-				return build_mode_switch_to_manual()
-			if mode_action == "switch_to_auto":
-				return build_mode_switch_to_auto()
-			return {}  # 未知 mode action，拒绝下发
-		"auto":
-			var auto_action: String = cmd.get("action", "")
-			if auto_action == "cancel":
-				return build_auto_cancel()
-			return build_task_set(cmd.get("missions", []))
-		_:
-			return {}
-
-
 # ─── ORION_TASK_SET (msgid 5)：任务队列整体替换 ────────────────
 
 static func build_auto_push_goto(x: float, y: float) -> Dictionary:

@@ -41,9 +41,9 @@ func _on_command_requested(text: String) -> void:
 
 
 ## LLM 翻译成功 → 广播下发（空数组 / 未选中车辆时不下发，仅日志）
-## 顺序语义（对齐 TASK_SET 整体替换）：
-## - 全部指令均为 auto/push(goto) → 聚合为一条 TASK_SET（多目标 = 任务队列，替换语义）
-## - 混合指令（含 manual/mode）→ 按 LLM 原始顺序逐条转换下发，不聚合、不打乱顺序
+## LLM 输出为任务序列（missions JSON 数组）：所有任务合并为一条 TASK_SET 整体下发
+## mission type 归一化（字符串 "goto" → 0）在 MessageBuilder.build_task_set 内
+## 注意：取消（count=0）由 UI 显式触发；LLM 输出空数组表示"无任务"，不下发
 func _on_cmds_generated(cmds: Array) -> void:
 	if cmds.is_empty():
 		print("[AutoHandler] LLM 无有效指令，不下发")
@@ -52,39 +52,10 @@ func _on_cmds_generated(cmds: Array) -> void:
 		print("[AutoHandler] 未选中车辆，指令不下发")
 		return
 
-	var all_goto := true
-	var items: Array = []  # 保持顺序：{"__push": missions} 或 原始 cmd
-	for cmd in cmds:
-		if cmd is Dictionary and cmd.get("cmd") == "auto" and cmd.get("action") == "push":
-			var missions = cmd.get("missions", [])
-			if missions is Array and not missions.is_empty():
-				items.append({"__push": missions})
-				continue
-		all_goto = false
-		items.append(cmd)
-
+	var task_set := MessageBuilder.build_task_set(cmds)
 	for id: String in app_state.selected_ids:
-		if all_goto:
-			# 全部为 goto → 聚合为一条 TASK_SET（mission type 归一化在 build_task_set 内）
-			var missions: Array = []
-			for item in items:
-				missions.append_array(item.get("__push", []))
-			var task_set := MessageBuilder.build_task_set(missions)
-			EventBus.cmd_send.emit(id, task_set)
-			print("[LLM] → ", id, ": TASK_SET x", missions.size())
-		else:
-			# 混合指令：保持 LLM 输出原始顺序逐条下发
-			for item in items:
-				var orion_cmd: Dictionary
-				if item is Dictionary and item.has("__push"):
-					orion_cmd = MessageBuilder.build_task_set(item.get("__push"))
-				else:
-					orion_cmd = MessageBuilder.build_from_llm(item)
-				if orion_cmd.is_empty():
-					printerr("[AutoHandler] 无法转换的指令: ", item)
-					continue
-				EventBus.cmd_send.emit(id, orion_cmd)
-				print("[LLM] → ", id, ": ", JSON.stringify(orion_cmd))
+		EventBus.cmd_send.emit(id, task_set)
+		print("[LLM] → ", id, ": TASK_SET x", cmds.size())
 
 
 ## LLM 请求失败 → 仅日志
