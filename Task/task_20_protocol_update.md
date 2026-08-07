@@ -14,7 +14,7 @@
 | 状态编码 | **内部存储统一 0/100/255**（0=free/100=occupied/255=unknown），存量 chunk .tres 资源迁移 |
 | auto 语义 | **LLM 多指令聚合为一条 TASK_SET 整体下发**（整体替换语义） |
 | sysid | **固定 200**（过渡期，无 libp2p peer_id）；compid 车=1 / 终端=200 |
-| 互通范围 | 本次只改 Pictor + test_ws_server（Rust 小车端后续切换） |
+| 互通范围 | Pictor + test_ws_server 已改；Rust 小车端已同步切换新协议，且开机默认 AUTO 模式 ✅ |
 | yaw | 顺时针为正，与现有 vehicle_2d yaw_offset=-PI/2 约定一致，无需改动（需回归验证） |
 | time_boot_ms | `Time.get_ticks_msec()`（仅模拟小车侧 test_ws_server 填写） |
 
@@ -60,6 +60,6 @@
 
 ## 遗留事项
 
-- Rust 小车端（Orion）尚未切换新协议（互通性待同步）
+- ~~Rust 小车端尚未切换新协议~~ ✅ 已同步（2026-08-07 用户确认：Rust 端协议已切换 + 开机默认 AUTO）
 - `test_ws_server.gd` 中 `"[" + vehicle_id + "]"` 拼接风格与项目其他文件不一致（功能正确）
 - 旧 JSON pose/map_delta 消息现在被忽略（日志提示），旧协议小车无法连接

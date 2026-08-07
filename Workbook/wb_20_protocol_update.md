@@ -31,7 +31,7 @@ task_20_protocol_update：将 Pictor 现有 WebSocket 协议（JSON + 二进制 
 - 验证：单元测试新增 endianness 断言（len [00 00 00 05]、65556 Rust 帧、f32 1.5→[3F C0 00 00]、i16 -50→[FF CE] 等）9/9 PASS；端到端 PASS
 ## Code review 修复（2026-08-07）
 - 🔴-1 LLM mission type：字符串 "goto" → 0 归一化（build_task_set + Encode_Task_Set 双层防御），LLM 自然语言指令可正常下发
-- 🔴-2 TASK_SET 语义：模拟端对齐 Rust robot.rs（Manual 忽略 Auto 命令）；**决策：车开机默认 AUTO**（需 Rust 端 mode.rs 默认值 Manual→Auto，待改）
+- 🔴-2 TASK_SET 语义：模拟端对齐 Rust robot.rs（Manual 忽略 Auto 命令）；**车开机默认 AUTO**（Rust 端 mode.rs 已改，用户 2026-08-07 确认）
 - 🔴-3 指令顺序：auto_handler 全 goto 才聚合为一条 TASK_SET，混合指令按 LLM 原始顺序逐条下发
 - 🟡 mode 未知 action 拒绝下发；task_set/map_delta count 钳制（255/65535）；beep 映射已存在（review 误报）
 - 测试：单元 10/10 PASS（新增 llm_string_type：字符串 type + 混合指令顺序）；e2e PASS（新增队列顺序断言 m1→m2 + Manual 忽略语义适配）；主场景冒烟 0 错误

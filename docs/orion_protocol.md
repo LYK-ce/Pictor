@@ -50,10 +50,11 @@
 
 ### 1.5 过渡期说明
 
-Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路继续使用现有协议**（含 `hello` 连接握手消息，仅发送一次，成本可忽略）。
+Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路继续作为传输通道**（含 `hello` 连接握手消息，仅发送一次，成本可忽略）。
 
-- 现有 WS 协议（JSON 命令/遥测 + `map_full` 二进制帧）**保持不变，不迁移、不删除**
-- 新协议（本文档）面向 libp2p 统一后的目标形态
+- **传输层保留 WebSocket**；消息格式已迁移为本协议（Orion 二进制帧）
+- 上行：`hello`（JSON，唯一保留的 JSON 消息）+ ORION_POSE / MAP_FULL / MAP_DELTA（二进制帧）
+- 下行：ORION_MANUAL_CONTROL / TASK_SET（二进制帧）
 - Pictor 完成 libp2p 接入后，WS 链路与 `hello` 一并退役
 
 ---
@@ -267,6 +268,8 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路继续使
 `missions[i]` 布局（9 字节）：`type` u8 [0..1) + `x` f32 [1..5) + `y` f32 [5..9)
 
 **总大小 = 1 + 9×count 字节**
+
+模式约定（2026-08-07 决策）：车**开机默认 AUTO 模式**；Manual 模式下收到的 TASK_SET 被静默忽略（不改变当前模式、不执行任务）。
 
 行为约束（2026-08-07 决策）：
 - **替换**：新队列到达即替换旧队列，不合并、不追加
