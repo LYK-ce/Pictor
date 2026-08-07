@@ -3,7 +3,8 @@
 ##
 ## OrionMessages — Orion 协议 5 种消息 payload 编解码
 ## 规范文档：docs/orion_protocol.md
-## 全部大端。地图状态编码：0=free / 100=occupied / 255=unknown（与内部存储统一，零映射直传）。
+## 全部大端（使用 OrionFrame 的 Read_*/Write_* helper，Godot 原生 API 为小端）。
+## 地图状态编码：0=free / 100=occupied / 255=unknown（与内部存储统一，零映射直传）。
 ##
 ## 消息清单：
 ##   msgid 1 ORION_POSE          24B        (u32 time_boot_ms + 5×f32)
@@ -22,12 +23,12 @@ extends RefCounted
 static func Encode_Pose(time_boot_ms: int, x: float, y: float, vx: float, vy: float, yaw: float) -> PackedByteArray:
 	var buf := PackedByteArray()
 	buf.resize(24)
-	buf.encode_u32(0, time_boot_ms)
-	buf.encode_float(4, x)
-	buf.encode_float(8, y)
-	buf.encode_float(12, vx)
-	buf.encode_float(16, vy)
-	buf.encode_float(20, yaw)
+	OrionFrame.Write_U32_BE(buf, 0, time_boot_ms)
+	OrionFrame.Write_F32_BE(buf, 4, x)
+	OrionFrame.Write_F32_BE(buf, 8, y)
+	OrionFrame.Write_F32_BE(buf, 12, vx)
+	OrionFrame.Write_F32_BE(buf, 16, vy)
+	OrionFrame.Write_F32_BE(buf, 20, yaw)
 	return buf
 
 
@@ -37,12 +38,12 @@ static func Decode_Pose(payload: PackedByteArray) -> Dictionary:
 		return _Fail("pose payload too small: %d" % payload.size())
 	return {
 		"ok": true,
-		"time_boot_ms": payload.decode_u32(0),
-		"x": payload.decode_float(4),
-		"y": payload.decode_float(8),
-		"vx": payload.decode_float(12),
-		"vy": payload.decode_float(16),
-		"yaw": payload.decode_float(20),
+		"time_boot_ms": OrionFrame.Read_U32_BE(payload, 0),
+		"x": OrionFrame.Read_F32_BE(payload, 4),
+		"y": OrionFrame.Read_F32_BE(payload, 8),
+		"vx": OrionFrame.Read_F32_BE(payload, 12),
+		"vy": OrionFrame.Read_F32_BE(payload, 16),
+		"yaw": OrionFrame.Read_F32_BE(payload, 20),
 		"error": "",
 	}
 
@@ -52,12 +53,12 @@ static func Decode_Pose(payload: PackedByteArray) -> Dictionary:
 static func Encode_Map_Full(time_boot_ms: int, origin_gx: int, origin_gy: int, width: int, height: int, resolution: float, data: PackedByteArray) -> PackedByteArray:
 	var buf := PackedByteArray()
 	buf.resize(20 + data.size())
-	buf.encode_u32(0, time_boot_ms)
-	buf.encode_s32(4, origin_gx)
-	buf.encode_s32(8, origin_gy)
-	buf.encode_u16(12, width)
-	buf.encode_u16(14, height)
-	buf.encode_float(16, resolution)
+	OrionFrame.Write_U32_BE(buf, 0, time_boot_ms)
+	OrionFrame.Write_S32_BE(buf, 4, origin_gx)
+	OrionFrame.Write_S32_BE(buf, 8, origin_gy)
+	OrionFrame.Write_U16_BE(buf, 12, width)
+	OrionFrame.Write_U16_BE(buf, 14, height)
+	OrionFrame.Write_F32_BE(buf, 16, resolution)
 	for i in range(data.size()):
 		buf[20 + i] = data[i]
 	return buf
@@ -67,19 +68,19 @@ static func Encode_Map_Full(time_boot_ms: int, origin_gx: int, origin_gy: int, w
 static func Decode_Map_Full(payload: PackedByteArray) -> Dictionary:
 	if payload.size() < 20:
 		return _Fail("map_full payload too small: %d" % payload.size())
-	var width := payload.decode_u16(12)
-	var height := payload.decode_u16(14)
+	var width := OrionFrame.Read_U16_BE(payload, 12)
+	var height := OrionFrame.Read_U16_BE(payload, 14)
 	var data_size := width * height
 	if payload.size() < 20 + data_size:
 		return _Fail("map_full data truncated: need %d have %d" % [20 + data_size, payload.size()])
 	return {
 		"ok": true,
-		"time_boot_ms": payload.decode_u32(0),
-		"origin_gx": payload.decode_s32(4),
-		"origin_gy": payload.decode_s32(8),
+		"time_boot_ms": OrionFrame.Read_U32_BE(payload, 0),
+		"origin_gx": OrionFrame.Read_S32_BE(payload, 4),
+		"origin_gy": OrionFrame.Read_S32_BE(payload, 8),
 		"width": width,
 		"height": height,
-		"resolution": payload.decode_float(16),
+		"resolution": OrionFrame.Read_F32_BE(payload, 16),
 		"data": payload.slice(20, 20 + data_size),
 		"error": "",
 	}
@@ -90,12 +91,12 @@ static func Decode_Map_Full(payload: PackedByteArray) -> Dictionary:
 static func Encode_Map_Delta(time_boot_ms: int, entries: Array) -> PackedByteArray:
 	var buf := PackedByteArray()
 	buf.resize(6 + 9 * entries.size())
-	buf.encode_u32(0, time_boot_ms)
-	buf.encode_u16(4, entries.size())
+	OrionFrame.Write_U32_BE(buf, 0, time_boot_ms)
+	OrionFrame.Write_U16_BE(buf, 4, entries.size())
 	var off := 6
 	for e in entries:
-		buf.encode_s32(off, e.get("gx", 0))
-		buf.encode_s32(off + 4, e.get("gy", 0))
+		OrionFrame.Write_S32_BE(buf, off, e.get("gx", 0))
+		OrionFrame.Write_S32_BE(buf, off + 4, e.get("gy", 0))
 		buf[off + 8] = e.get("state", ProtocolDef.CELL_FREE)
 		off += 9
 	return buf
@@ -105,19 +106,19 @@ static func Encode_Map_Delta(time_boot_ms: int, entries: Array) -> PackedByteArr
 static func Decode_Map_Delta(payload: PackedByteArray) -> Dictionary:
 	if payload.size() < 6:
 		return _Fail("map_delta payload too small: %d" % payload.size())
-	var count := payload.decode_u16(4)
+	var count := OrionFrame.Read_U16_BE(payload, 4)
 	if payload.size() < 6 + 9 * count:
 		return _Fail("map_delta entries truncated: need %d have %d" % [6 + 9 * count, payload.size()])
 	var entries: Array = []
 	var off := 6
 	for i in range(count):
 		entries.append({
-			"gx": payload.decode_s32(off),
-			"gy": payload.decode_s32(off + 4),
+			"gx": OrionFrame.Read_S32_BE(payload, off),
+			"gy": OrionFrame.Read_S32_BE(payload, off + 4),
 			"state": payload[off + 8],
 		})
 		off += 9
-	return {"ok": true, "time_boot_ms": payload.decode_u32(0), "count": count, "entries": entries, "error": ""}
+	return {"ok": true, "time_boot_ms": OrionFrame.Read_U32_BE(payload, 0), "count": count, "entries": entries, "error": ""}
 
 
 # ─── ORION_MANUAL_CONTROL (msgid 4) — 3B ──────────────────────
@@ -126,7 +127,7 @@ static func Encode_Manual_Control(action: int, param: int) -> PackedByteArray:
 	var buf := PackedByteArray()
 	buf.resize(3)
 	buf[0] = action
-	buf.encode_s16(1, param)
+	OrionFrame.Write_S16_BE(buf, 1, param)
 	return buf
 
 
@@ -134,7 +135,7 @@ static func Encode_Manual_Control(action: int, param: int) -> PackedByteArray:
 static func Decode_Manual_Control(payload: PackedByteArray) -> Dictionary:
 	if payload.size() < 3:
 		return _Fail("manual_control payload too small: %d" % payload.size())
-	return {"ok": true, "action": payload[0], "param": payload.decode_s16(1), "error": ""}
+	return {"ok": true, "action": payload[0], "param": OrionFrame.Read_S16_BE(payload, 1), "error": ""}
 
 
 # ─── ORION_TASK_SET (msgid 5) — 1B + 9B/mission ───────────────
@@ -146,8 +147,8 @@ static func Encode_Task_Set(missions: Array) -> PackedByteArray:
 	var off := 1
 	for m in missions:
 		buf[off] = m.get("type", ProtocolDef.MISSION_TYPE_GOTO)
-		buf.encode_float(off + 1, m.get("x", 0.0))
-		buf.encode_float(off + 5, m.get("y", 0.0))
+		OrionFrame.Write_F32_BE(buf, off + 1, m.get("x", 0.0))
+		OrionFrame.Write_F32_BE(buf, off + 5, m.get("y", 0.0))
 		off += 9
 	return buf
 
@@ -164,8 +165,8 @@ static func Decode_Task_Set(payload: PackedByteArray) -> Dictionary:
 	for i in range(count):
 		missions.append({
 			"type": payload[off],
-			"x": payload.decode_float(off + 1),
-			"y": payload.decode_float(off + 5),
+			"x": OrionFrame.Read_F32_BE(payload, off + 1),
+			"y": OrionFrame.Read_F32_BE(payload, off + 5),
 		})
 		off += 9
 	return {"ok": true, "count": count, "missions": missions, "error": ""}

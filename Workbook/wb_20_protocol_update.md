@@ -23,6 +23,12 @@ task_20_protocol_update：将 Pictor 现有 WebSocket 协议（JSON + 二进制 
 - 验证：单元测试 8/8 PASS；端到端 PASS（hello/map_full/manual/task_set 队列/cancel）；主场景 headless 冒烟无错
 - 过程中发现并修复：①客户端 inbound_buffer 默认 64KB < map_full 帧 65.5KB 会断连（Pictor websocket_client 已设 4MB，测试脚本需同样设置）②TASK_SET 需将车切回 AUTO 模式才执行队列 ③parser match 分支顺序（manual/task_set 曾误插在 `_` 后）
 - 测试脚本正式存放：src/test/test_orion_protocol.gd（单元）、src/test/test_e2e_orion.gd（端到端）
+## 字节序修复（2026-08-07，真实小车联调发现）
+- 现象：`len mismatch: header=335544576 actual=65556` / `header=402653184 actual=24`
+- 根因：**Pictor 端字节序错误**——Godot PackedByteArray 的 encode_u32/decode_u32/decode_float 等原生 API 均为小端，而 Orion 协议 §2 规定全大端；Rust 端发送标准大端符合协议
+- 修复：orion_frame.gd 新增 Read_U16/S16/U32/S32/F32_BE + Write_* 大端 helper（float 用 encode_float 小端写+反转），帧编解码与 orion_messages.gd 全部替换为 BE helper
+- 影响面：上行（pose/map_full/map_delta 解析）+ 下行（manual_control/task_set 编码）全部覆盖
+- 验证：单元测试新增 endianness 断言（len [00 00 00 05]、65556 Rust 帧、f32 1.5→[3F C0 00 00]、i16 -50→[FF CE] 等）9/9 PASS；端到端 PASS
 ## 阶段
 1. [进行中] 子 agent 代码阅读 → 确定改动清单 → 与用户讨论
 2. [ ] 实施

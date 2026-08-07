@@ -2,6 +2,7 @@ extends SceneTree
 
 ## Orion 协议编解码 roundtrip 测试（headless）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
+## 覆盖：帧/消息 roundtrip + 大端字节序断言（与 Rust 端字节比对）
 
 func _init() -> void:
 	var ok := true
@@ -13,6 +14,7 @@ func _init() -> void:
 	ok = ok and _test_task_set()
 	ok = ok and _test_build_cmd()
 	ok = ok and _test_parser_dispatch()
+	ok = ok and _test_endianness()
 	print("=== ALL PASS: ", ok, " ===")
 	quit(0 if ok else 1)
 
@@ -22,11 +24,13 @@ func _test_frame() -> bool:
 	var frame := OrionFrame.Encode_Frame(3, 200, 1, payload)
 	if frame[0] != 0x4F:
 		print("FAIL magic"); return false
-	if frame.decode_u32(1) != 5:
-		print("FAIL len"); return false
+	# len 字段大端：5 → [00 00 00 05]
+	if frame[1] != 0x00 or frame[2] != 0x00 or frame[3] != 0x00 or frame[4] != 0x05:
+		print("FAIL len BE: ", frame.slice(1, 5)); return false
 	if frame[6] != 200 or frame[7] != 1:
 		print("FAIL sysid/compid"); return false
-	if frame.decode_u16(8) != 3:
+	# msgid 大端：3 → [00 03]
+	if frame[8] != 0x00 or frame[9] != 0x03:
 		print("FAIL msgid BE"); return false
 	var dec := OrionFrame.Decode_Frame(frame)
 	if not dec.ok:
@@ -163,3 +167,53 @@ func _test_parser_dispatch() -> bool:
 	if MessageParser.parse_orion_frame(bad).ok:
 		print("FAIL parser unknown msgid accepted"); return false
 	print("PASS parser_dispatch"); return true
+
+
+# ─── 大端字节序断言（与 Rust 端字节逐一比对）──────────────────────
+
+func _test_endianness() -> bool:
+	# 1) 帧 len 大端：payload 5 → [00 00 00 05]；msgid 3 → [00 03]
+	var f := OrionFrame.Encode_Frame(3, 200, 1, PackedByteArray([1, 2, 3, 4, 5]))
+	var len_bytes := f.slice(1, 5)
+	if len_bytes != PackedByteArray([0x00, 0x00, 0x00, 0x05]):
+		print("FAIL frame len BE bytes: ", len_bytes); return false
+	if f.slice(8, 10) != PackedByteArray([0x00, 0x03]):
+		print("FAIL frame msgid BE bytes"); return false
+
+	# 2) 模拟真实 Rust 大端帧（map_full 65556）→ Decode_Frame 必须正确读出
+	var rust_frame := PackedByteArray()
+	rust_frame.resize(12 + 65556)
+	rust_frame[0] = 0x4F
+	# len = 65556 大端字节 [00 01 00 14]
+	rust_frame[1] = 0x00; rust_frame[2] = 0x01; rust_frame[3] = 0x00; rust_frame[4] = 0x14
+	rust_frame[5] = 0; rust_frame[6] = 0; rust_frame[7] = 1
+	rust_frame[8] = 0x00; rust_frame[9] = 0x02  # msgid = 2 (MAP_FULL)
+	var dec := OrionFrame.Decode_Frame(rust_frame)
+	if not dec.ok:
+		print("FAIL rust BE frame decode: ", dec.error); return false
+	if dec.msgid != 2 or dec.payload.size() != 65556:
+		print("FAIL rust BE frame fields"); return false
+
+	# 3) pose float 大端：x=1.5 → 0x3FC00000 → [3F C0 00 00]
+	var pose := OrionMessages.Encode_Pose(0, 1.5, 0.0, 0.0, 0.0, 0.0)
+	if pose.slice(4, 8) != PackedByteArray([0x3F, 0xC0, 0x00, 0x00]):
+		print("FAIL pose float BE: ", pose.slice(4, 8)); return false
+
+	# 4) map_full resolution 0.5 → 0x3F000000；origin_gx=-256 → [FF FF FF 00]
+	var mf := OrionMessages.Encode_Map_Full(0, -256, 256, 256, 256, 0.5, PackedByteArray())
+	if mf.slice(4, 8) != PackedByteArray([0xFF, 0xFF, 0xFF, 0x00]):
+		print("FAIL map_full s32 BE: ", mf.slice(4, 8)); return false
+	if mf.slice(16, 20) != PackedByteArray([0x3F, 0x00, 0x00, 0x00]):
+		print("FAIL map_full f32 BE: ", mf.slice(16, 20)); return false
+
+	# 5) manual param i16 大端：-50 → [FF CE]
+	var mc := OrionMessages.Encode_Manual_Control(0, -50)
+	if mc.slice(1, 3) != PackedByteArray([0xFF, 0xCE]):
+		print("FAIL manual param i16 BE: ", mc.slice(1, 3)); return false
+
+	# 6) task_set x=12.5 → 0x41480000 → [41 48 00 00]
+	var ts := OrionMessages.Encode_Task_Set([{"type": 0, "x": 12.5, "y": 0.0}])
+	if ts.slice(2, 6) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
+		print("FAIL task_set f32 BE: ", ts.slice(2, 6)); return false
+
+	print("PASS endianness (BE bytes match Rust)"); return true
