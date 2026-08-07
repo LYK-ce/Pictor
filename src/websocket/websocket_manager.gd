@@ -3,6 +3,7 @@ extends Node
 ## Date: 2026-07-12
 ##
 ## WebSocketManager — 管理多个 WebSocket 连接
+## 下行命令：cmd_send(vehicle_id, Dictionary) → OrionMessages.Build_Cmd 编码为帧 → send_binary
 
 @export var ws_client_scene: PackedScene
 
@@ -58,7 +59,12 @@ func _on_vehicle_registered(vehicle_id: String, address: String) -> void:
 func _on_cmd_send(vehicle_id: String, cmd: Dictionary) -> void:
 	var ws: Node = _vehicles.get(vehicle_id)
 	if ws:
-		ws.send(JSON.stringify(cmd))
+		# cmd 为 Orion 语义 Dictionary（MessageBuilder 构造）→ 编码为完整帧发送
+		var frame := OrionMessages.Build_Cmd(cmd)
+		if frame.is_empty():
+			printerr("[WS-Mgr] cmd encode failed: ", cmd)
+			return
+		ws.send_binary(frame)
 
 
 func get_vehicles() -> Array[String]:

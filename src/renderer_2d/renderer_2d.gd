@@ -57,13 +57,13 @@ func _on_chunk_updated(chunk_x: int, chunk_y: int) -> void:
 		print("[Renderer2D] chunk_updated: chunk(%d,%d) EMPTY — skipping" % [chunk_x, chunk_y])
 		return
 	# DEBUG
-	var c0 := 0; var c1 := 0; var c2 := 0
+	var c0 := 0; var c100 := 0; var c255 := 0
 	for i in range(cells.size()):
 		match cells[i]:
 			0: c0 += 1
-			1: c1 += 1
-			2: c2 += 1
-	print("[Renderer2D] chunk_updated: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d] → render" % [chunk_x, chunk_y, cells.size(), c0, c1, c2])
+			100: c100 += 1
+			255: c255 += 1
+	print("[Renderer2D] chunk_updated: chunk(%d,%d) cells=%d [0:%d 100:%d 255:%d] → render" % [chunk_x, chunk_y, cells.size(), c0, c100, c255])
 	_map.render_chunk(chunk_x, chunk_y, cells)
 
 

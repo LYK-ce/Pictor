@@ -4,6 +4,8 @@ extends Node
 ##
 ## WebSocketClient — WebSocket 通信组件
 ## 协议解析委托给 MessageParser，只负责 WS 连接管理和 EventBus 信号转发。
+## - 文本帧：过渡期 JSON hello（车辆注册门控）
+## - 二进制帧：Orion 统一协议帧（pose / map_full / map_delta）
 
 enum State { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -50,24 +52,36 @@ func _read_packets() -> void:
 			var text := pkt.get_string_from_utf8()
 			_on_message(text)
 		else:
-			# 二进制帧（hello 之后才处理）
+			# 二进制帧（Orion 帧，hello 之后才处理）
 			if not _identified:
 				continue
-			var result := MessageParser.parse_binary(pkt)
+			var result := MessageParser.parse_orion_frame(pkt)
 			if not result.ok:
-				printerr("[WS] binary parse error: ", result.error)
+				printerr("[WS] orion frame parse error: ", result.error)
 				continue
-			if result.type == ProtocolDef.BIN_MAP_FULL_TYPE:
-				# DEBUG: 统计 cell 类型分布
-				var cells: PackedByteArray = result.cells
-				var c0 := 0; var c1 := 0; var c2 := 0
-				for i in range(cells.size()):
-					match cells[i]:
-						0: c0 += 1
-						1: c1 += 1
-						2: c2 += 1
-				print("[WS] map_full bin: chunk(%d,%d) cells=%d [0:%d 1:%d 2:%d]" % [result.chunk_x, result.chunk_y, cells.size(), c0, c1, c2])
-				EventBus.map_full_received.emit(result.chunk_x, result.chunk_y, cells)
+			_match_orion_msg(result.msgid, result.data)
+
+
+## 按 msgid 分发 Orion 消息到 EventBus
+func _match_orion_msg(msgid: int, data: Dictionary) -> void:
+	match msgid:
+		ProtocolDef.MSGID_POSE:
+			EventBus.pose_received.emit(_vehicle_id, data)
+		ProtocolDef.MSGID_MAP_FULL:
+			# DEBUG: 统计 cell 类型分布
+			var cells: PackedByteArray = data.cells
+			var c0 := 0; var c100 := 0; var c255 := 0
+			for i in range(cells.size()):
+				match cells[i]:
+					0: c0 += 1
+					100: c100 += 1
+					255: c255 += 1
+			print("[WS] map_full: chunk(%d,%d) cells=%d [0:%d 100:%d 255:%d]" % [data.chunk_x, data.chunk_y, cells.size(), c0, c100, c255])
+			EventBus.map_full_received.emit(data.chunk_x, data.chunk_y, cells)
+		ProtocolDef.MSGID_MAP_DELTA:
+			EventBus.map_delta_received.emit(data.voxels)
+		_:
+			printerr("[WS] unhandled msgid: ", msgid)
 
 
 func _on_message(text: String) -> void:
@@ -90,11 +104,8 @@ func _on_message(text: String) -> void:
 	if not _identified:
 		return
 
-	match msg_type:
-		ProtocolDef.MSG_POSE:
-			EventBus.pose_received.emit(_vehicle_id, data)
-		ProtocolDef.MSG_MAP_DELTA:
-			EventBus.map_delta_received.emit(data.get("voxels", []))
+	# 过渡期仅保留 hello（JSON）；pose/map_delta 已迁移至 Orion 二进制帧
+	print("[WS] ignoring legacy JSON message: ", msg_type)
 
 
 func _connect() -> void:
@@ -123,6 +134,14 @@ func send(msg: String) -> void:
 		printerr("[WS] send failed: not connected")
 		return
 	_ws.send_text(msg)
+
+
+## 发送二进制帧（Orion 帧）
+func send_binary(pkt: PackedByteArray) -> void:
+	if _state != State.CONNECTED:
+		printerr("[WS] send_binary failed: not connected")
+		return
+	_ws.put_packet(pkt)
 
 
 func get_state() -> int:

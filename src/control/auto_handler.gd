@@ -48,10 +48,30 @@ func _on_cmds_generated(cmds: Array) -> void:
 	if app_state.selected_ids.is_empty():
 		print("[AutoHandler] 未选中车辆，指令不下发")
 		return
+	# TASK_SET 为整体替换语义：聚合 LLM 输出的全部 goto push 为一条 TASK_SET，
+	# 其余命令（manual/mode）逐条转换下发
+	var goto_missions: Array = []
+	var other_cmds: Array = []
+	for cmd in cmds:
+		if cmd is Dictionary and cmd.get("cmd") == "auto" and cmd.get("action") == "push":
+			var missions = cmd.get("missions", [])
+			if missions is Array:
+				goto_missions.append_array(missions)
+		else:
+			other_cmds.append(cmd)
+
 	for id: String in app_state.selected_ids:
-		for cmd: Dictionary in cmds:
-			EventBus.cmd_send.emit(id, cmd)
-			print("[LLM] → ", id, ": ", JSON.stringify(cmd))
+		if not goto_missions.is_empty():
+			var task_set := MessageBuilder.build_task_set(goto_missions)
+			EventBus.cmd_send.emit(id, task_set)
+			print("[LLM] → ", id, ": TASK_SET x", goto_missions.size())
+		for cmd in other_cmds:
+			var orion_cmd := MessageBuilder.build_from_llm(cmd)
+			if orion_cmd.is_empty():
+				printerr("[AutoHandler] 无法转换的指令: ", cmd)
+				continue
+			EventBus.cmd_send.emit(id, orion_cmd)
+			print("[LLM] → ", id, ": ", JSON.stringify(orion_cmd))
 
 
 ## LLM 请求失败 → 仅日志

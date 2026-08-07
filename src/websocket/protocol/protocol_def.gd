@@ -1,69 +1,66 @@
 ## Presented by KeJi
-## Date: 2026-07-29
+## Date ： 2026-08-07
 ##
-## ProtocolDef — 协议枚举与常量定义
-## 所有协议相关的魔法字符串/数字集中管理，避免散落各处。
+## ProtocolDef — Orion 统一协议常量定义
+## 规范文档：docs/orion_protocol.md
+## 所有协议相关的魔法数字集中管理，避免散落各处。
 
 class_name ProtocolDef
 extends RefCounted
 
 
-# ─── 上行消息类型 (小车 → PC) ──────────────────────────────
+# ─── 过渡期 JSON 消息（WS 链路保留；Orion 协议无此消息）──────
 
-const MSG_HELLO     := "hello"
-const MSG_POSE      := "pose"
-const MSG_MAP_DELTA := "map_delta"
+const MSG_HELLO := "hello"
 
 
-# ─── 下行命令类型 (PC → 小车) ──────────────────────────────
+# ─── msgid（ORION_* 消息 ID）────────────────────────────────
 
-const CMD_MODE   := "mode"
-const CMD_MANUAL := "manual"
-const CMD_AUTO   := "auto"
-
-
-# ─── mode action ───────────────────────────────────────────
-
-const MODE_SWITCH_TO_MANUAL := "switch_to_manual"
-const MODE_SWITCH_TO_AUTO   := "switch_to_auto"
+const MSGID_POSE := 1
+const MSGID_MAP_FULL := 2
+const MSGID_MAP_DELTA := 3
+const MSGID_MANUAL_CONTROL := 4
+const MSGID_TASK_SET := 5
 
 
-# ─── manual action ─────────────────────────────────────────
+# ─── ORION_MANUAL_CONTROL action 枚举 ────────────────────────
 
-const MANUAL_FORWARD    := "forward"
-const MANUAL_BACKWARD   := "backward"
-const MANUAL_SPIN_LEFT  := "spin_left"
-const MANUAL_SPIN_RIGHT := "spin_right"
-const MANUAL_STOP       := "stop"
-const MANUAL_BEEP       := "beep"
+const ACTION_FORWARD := 0
+const ACTION_BACKWARD := 1
+const ACTION_SPIN_LEFT := 2
+const ACTION_SPIN_RIGHT := 3
+const ACTION_STOP := 4
+const ACTION_BEEP := 5
+const ACTION_START_LIDAR := 6
+const ACTION_STOP_LIDAR := 7
+const ACTION_SWITCH_TO_MANUAL := 8
+const ACTION_SWITCH_TO_AUTO := 9
 
 const MANUAL_DEFAULT_SPEED := 50
 
 
-# ─── auto action ───────────────────────────────────────────
+# ─── ORION_TASK_SET mission type ─────────────────────────────
 
-const AUTO_PUSH   := "push"
-const AUTO_CANCEL := "cancel"
-
-
-# ─── mission type ──────────────────────────────────────────
-
-const MISSION_GOTO := "goto"
+const MISSION_TYPE_GOTO := 0
 
 
-# ─── cell state ────────────────────────────────────────────
+# ─── cell 状态（内部存储与线上编码统一，零映射直传）────────────
 
-const CELL_FREE    := 0  # 可通行
-const CELL_WALL    := 1  # 不可通行
-const CELL_UNKNOWN := 2  # 未知
+const CELL_FREE := 0
+const CELL_OCCUPIED := 100
+const CELL_UNKNOWN := 255
 
 
-# ─── 二进制帧 (map_full) ───────────────────────────────────
+# ─── sysid / compid 约定 ────────────────────────────────────
 
-const BIN_TYPE_OFFSET   := 0
-const BIN_CHUNK_X_OFFSET := 1
-const BIN_CHUNK_Y_OFFSET := 5
-const BIN_CELLS_OFFSET  := 9
-const BIN_CELLS_SIZE    := 65536   # 256 × 256
-const BIN_FRAME_SIZE    := 65545   # 1 + 4 + 4 + 65536
-const BIN_MAP_FULL_TYPE := 0
+const SYSID_TERMINAL := 200      # 过渡期固定值（无 libp2p peer_id）
+const COMPID_VEHICLE := 1
+const COMPID_TERMINAL := 200
+
+
+# ─── 地图常量 ────────────────────────────────────────────────
+
+const MAP_RESOLUTION := 0.5      # 米/cell
+const MAP_WIDTH := 256           # cell 数
+const MAP_HEIGHT := 256          # cell 数
+const CHUNK_SIZE := 256

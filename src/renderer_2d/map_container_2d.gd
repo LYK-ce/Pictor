@@ -33,11 +33,11 @@ func render_chunk(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 		for lx in range(CHUNK_SIZE):
 			var idx: int = ly * CHUNK_SIZE + lx
 			var pos := Vector2i(offset_x + lx, offset_y + ly)
-			if cells[idx] == 1:
+			if cells[idx] == 100:
 				wall_cells.append(pos)
 			elif cells[idx] == 0:
 				ground_cells.append(pos)
-			# state >= 2: 未知，不渲染
+			# state 255: 未知，不渲染
 
 	print("[MapContainer2D] render_chunk: chunk(%d,%d) ground=%d wall=%d" % [chunk_x, chunk_y, ground_cells.size(), wall_cells.size()])
 
@@ -57,7 +57,7 @@ func update_cells(updates: Array) -> void:
 			0:
 				_wall_layer.erase_cell(pos)
 				_ground_layer.set_cells_terrain_connect([pos], TERRAIN_SET, TERRAIN_GROUND, true)
-			1:
+			100:
 				_ground_layer.erase_cell(pos)
 				_wall_layer.set_cells_terrain_connect([pos], TERRAIN_SET, TERRAIN_WALL, true)
 			_:
