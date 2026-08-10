@@ -193,7 +193,7 @@ func _Send_Map() -> void:
 		0.5,                       # resolution（米/cell）
 		cells
 	)
-	var frame := OrionFrame.Encode_Frame(ProtocolDef.MSGID_MAP_FULL, 0, ProtocolDef.COMPID_VEHICLE, payload)
+	var frame := OrionFrame.Encode_Frame(ProtocolDef.MSGID_MAP_FULL, PackedByteArray(), ProtocolDef.COMPID_VEHICLE, payload)
 
 	print("[" + vehicle_id + "] sending map_full chunk(0,0), ", frame.size(), " bytes")
 	_Send_Binary(frame)
@@ -204,7 +204,7 @@ func _Send_Pose() -> void:
 		Time.get_ticks_msec() & 0xFFFFFFFF,
 		_x, _y, _vx, _vy, _yaw
 	)
-	var frame := OrionFrame.Encode_Frame(ProtocolDef.MSGID_POSE, 0, ProtocolDef.COMPID_VEHICLE, payload)
+	var frame := OrionFrame.Encode_Frame(ProtocolDef.MSGID_POSE, PackedByteArray(), ProtocolDef.COMPID_VEHICLE, payload)
 	_Send_Binary(frame)
 
 

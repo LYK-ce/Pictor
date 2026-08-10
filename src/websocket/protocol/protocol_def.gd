@@ -53,7 +53,8 @@ const CELL_UNKNOWN := 255
 
 # ─── sysid / compid 约定 ────────────────────────────────────
 
-const SYSID_TERMINAL := 200      # 过渡期固定值（无 libp2p peer_id）
+# v2：终端上行身份 = 空 sysid（sysid_len=0）+ compid=200，不再使用固定 sysid 值
+const SYSID_LEN_MAX := 255        # sysid 字节数上限（u8）
 const COMPID_VEHICLE := 1
 const COMPID_TERMINAL := 200
 

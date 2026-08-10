@@ -1,14 +1,16 @@
 ## Presented by KeJi
-## Date ： 2026-08-07
+## Date ： 2026-08-10
 ##
-## OrionFrame — Orion 统一协议帧编解码（MAVLink 风格 + 按需扩展）
-## 规范文档：docs/orion_protocol.md
+## OrionFrame — Orion 统一协议帧编解码（MAVLink 风格 + 按需扩展）v2
+## 规范文档：docs/orion_protocol.md（2026-08-10 升级：sysid 变长）
 ##
 ## 帧布局（全部大端）：
-##   magic(1B=0x4F) + len(u32) + seq(u8) + sysid(u8) + compid(u8)
-##   + msgid(u16) + payload(N) + checksum(u16)
-## 第一版：seq / checksum 恒填 0（libp2p/TCP 已保证可靠与完整）
-## 总开销 12 字节，payload 偏移 10。
+##   magic(1B=0x4F) + len(u32) + seq(u8) + sysid_len(u8) + sysid(N)
+##   + compid(u8) + msgid(u16) + payload(M) + checksum(u16)
+## 固定头 10B（不含 sysid），payload 偏移 = 10 + sysid_len，总开销 = 12 + N。
+## - sysid = 发送方完整 libp2p PeerId（multihash，约 34B）；空身份（sysid_len=0）
+##   为控制终端上行命令（配合 compid=200）
+## - seq / checksum 第一版恒填 0（libp2p/TCP 已保证可靠与完整）
 ##
 ## ⚠️ 字节序：协议规定全大端。Godot 原生 PackedByteArray.encode_u32/decode_u32
 ##    等均为小端，必须使用本类提供的大端 helper（Read_*/Write_*）。
@@ -20,12 +22,11 @@ const MAGIC := 0x4F
 
 const LEN_OFFSET := 1
 const SEQ_OFFSET := 5
-const SYSID_OFFSET := 6
-const COMPID_OFFSET := 7
-const MSGID_OFFSET := 8
-const PAYLOAD_OFFSET := 10
-const HEADER_SIZE := 12      # 1 + 4 + 1 + 1 + 1 + 2 + 2
+const SYSID_LEN_OFFSET := 6
+const SYSID_START := 7
+const FIXED_HEADER_SIZE := 10      # magic + len + seq + sysid_len + compid + msgid（不含 sysid）
 const CHECKSUM_SIZE := 2
+const MAX_SYSID_LEN := 255         # sysid_len 为 u8
 
 
 # ─── 大端编解码 helper（协议要求 BE，Godot 原生 API 为 LE）────────
@@ -89,43 +90,52 @@ static func Read_F32_BE(buf: PackedByteArray, offset: int) -> float:
 	return tmp.decode_float(0)
 
 
-# ─── 帧编解码 ───────────────────────────────────────────────
+# ─── 帧编解码（v2 变长 sysid）────────────────────────────────
 
 ## 编码一条完整帧（seq / checksum 恒 0）。
-static func Encode_Frame(msgid: int, sysid: int, compid: int, payload: PackedByteArray) -> PackedByteArray:
+## sysid 传完整 PeerId 字节（PackedByteArray）；终端上行传空数组（sysid_len=0）。
+static func Encode_Frame(msgid: int, sysid: PackedByteArray, compid: int, payload: PackedByteArray) -> PackedByteArray:
+	var n := sysid.size()
+	if n > MAX_SYSID_LEN:
+		printerr("[OrionFrame] sysid too long: ", n, " bytes — truncated")
+		n = MAX_SYSID_LEN
 	var buf := PackedByteArray()
-	buf.resize(HEADER_SIZE + payload.size())
+	buf.resize(FIXED_HEADER_SIZE + n + payload.size() + CHECKSUM_SIZE)
 	buf[0] = MAGIC
 	Write_U32_BE(buf, LEN_OFFSET, payload.size())
 	buf[SEQ_OFFSET] = 0
-	buf[SYSID_OFFSET] = sysid
-	buf[COMPID_OFFSET] = compid
-	Write_U16_BE(buf, MSGID_OFFSET, msgid)
+	buf[SYSID_LEN_OFFSET] = n
+	for i in range(n):
+		buf[SYSID_START + i] = sysid[i]
+	buf[SYSID_START + n] = compid
+	Write_U16_BE(buf, SYSID_START + n + 1, msgid)
 	for i in range(payload.size()):
-		buf[PAYLOAD_OFFSET + i] = payload[i]
+		buf[SYSID_START + n + 3 + i] = payload[i]
 	# checksum 恒 0（buf 已初始化为 0）
 	return buf
 
 
-## 解码一条完整帧。
-## 返回: { ok: bool, msgid: int, sysid: int, compid: int, payload: PackedByteArray, error: String }
+## 解码一条完整帧（变长 sysid：读 sysid_len → 动态 payload 偏移）。
+## 返回: { ok, msgid, sysid: PackedByteArray, compid, payload, error }
 static func Decode_Frame(pkt: PackedByteArray) -> Dictionary:
-	if pkt.size() < HEADER_SIZE:
+	if pkt.size() < FIXED_HEADER_SIZE + CHECKSUM_SIZE:
 		return _Fail("frame too small: %d bytes" % pkt.size())
 	if pkt[0] != MAGIC:
 		return _Fail("bad magic 0x%02X" % pkt[0])
+	var sysid_len := pkt[SYSID_LEN_OFFSET]
+	var header_len := FIXED_HEADER_SIZE + sysid_len
 	var payload_len := Read_U32_BE(pkt, LEN_OFFSET)
-	if payload_len != pkt.size() - HEADER_SIZE:
-		return _Fail("len mismatch: header=%d actual=%d" % [payload_len, pkt.size() - HEADER_SIZE])
+	if payload_len != pkt.size() - header_len - CHECKSUM_SIZE:
+		return _Fail("len mismatch: header=%d actual=%d" % [payload_len, pkt.size() - header_len - CHECKSUM_SIZE])
 	return {
 		"ok": true,
-		"msgid": Read_U16_BE(pkt, MSGID_OFFSET),
-		"sysid": pkt[SYSID_OFFSET],
-		"compid": pkt[COMPID_OFFSET],
-		"payload": pkt.slice(PAYLOAD_OFFSET, pkt.size() - CHECKSUM_SIZE),
+		"msgid": Read_U16_BE(pkt, SYSID_START + sysid_len + 1),
+		"sysid": pkt.slice(SYSID_START, SYSID_START + sysid_len),
+		"compid": pkt[SYSID_START + sysid_len],
+		"payload": pkt.slice(header_len, header_len + payload_len),
 		"error": "",
 	}
 
 
 static func _Fail(msg: String) -> Dictionary:
-	return {"ok": false, "msgid": -1, "sysid": 0, "compid": 0, "payload": PackedByteArray(), "error": msg}
+	return {"ok": false, "msgid": -1, "sysid": PackedByteArray(), "compid": 0, "payload": PackedByteArray(), "error": msg}

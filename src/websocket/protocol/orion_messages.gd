@@ -7,7 +7,7 @@
 ## 地图状态编码：0=free / 100=occupied / 255=unknown（与内部存储统一，零映射直传）。
 ##
 ## 消息清单：
-##   msgid 1 ORION_POSE          24B        (u32 time_boot_ms + 5×f32)
+##   msgid 1 ORION_POSE          33B        (u32 time_boot_ms + 5×f32 + valid u8 + sub_gx i32 + sub_gy i32)
 ##   msgid 2 ORION_MAP_FULL      20B 头 + data
 ##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry
 ##   msgid 4 ORION_MANUAL_CONTROL 3B        (u8 action + i16 param)
@@ -18,24 +18,27 @@ class_name OrionMessages
 extends RefCounted
 
 
-# ─── ORION_POSE (msgid 1) — 24B ──────────────────────────────
+# ─── ORION_POSE (msgid 1) — 33B（v2：+ valid/sub_gx/sub_gy 意图字段）────
 
-static func Encode_Pose(time_boot_ms: int, x: float, y: float, vx: float, vy: float, yaw: float) -> PackedByteArray:
+static func Encode_Pose(time_boot_ms: int, x: float, y: float, vx: float, vy: float, yaw: float, valid := false, sub_gx := 0, sub_gy := 0) -> PackedByteArray:
 	var buf := PackedByteArray()
-	buf.resize(24)
+	buf.resize(33)
 	OrionFrame.Write_U32_BE(buf, 0, time_boot_ms)
 	OrionFrame.Write_F32_BE(buf, 4, x)
 	OrionFrame.Write_F32_BE(buf, 8, y)
 	OrionFrame.Write_F32_BE(buf, 12, vx)
 	OrionFrame.Write_F32_BE(buf, 16, vy)
 	OrionFrame.Write_F32_BE(buf, 20, yaw)
+	buf[24] = 1 if valid else 0
+	OrionFrame.Write_S32_BE(buf, 25, sub_gx)
+	OrionFrame.Write_S32_BE(buf, 29, sub_gy)
 	return buf
 
 
-## 返回: { ok, time_boot_ms, x, y, vx, vy, yaw, error }
+## 返回: { ok, time_boot_ms, x, y, vx, vy, yaw, valid, sub_gx, sub_gy, error }
 static func Decode_Pose(payload: PackedByteArray) -> Dictionary:
-	if payload.size() < 24:
-		return _Fail("pose payload too small: %d" % payload.size())
+	if payload.size() != 33:
+		return _Fail("pose payload size mismatch: %d (expect 33)" % payload.size())
 	return {
 		"ok": true,
 		"time_boot_ms": OrionFrame.Read_U32_BE(payload, 0),
@@ -44,6 +47,9 @@ static func Decode_Pose(payload: PackedByteArray) -> Dictionary:
 		"vx": OrionFrame.Read_F32_BE(payload, 12),
 		"vy": OrionFrame.Read_F32_BE(payload, 16),
 		"yaw": OrionFrame.Read_F32_BE(payload, 20),
+		"valid": payload[24] != 0,
+		"sub_gx": OrionFrame.Read_S32_BE(payload, 25),
+		"sub_gy": OrionFrame.Read_S32_BE(payload, 29),
 		"error": "",
 	}
 
@@ -189,7 +195,7 @@ static func Decode_Task_Set(payload: PackedByteArray) -> Dictionary:
 # ─── 下行命令组装（cmd_send 的 Dictionary → 完整帧）────────────
 
 ## cmd 由 MessageBuilder 构造，格式: { "msgid": int, ...消息字段 }
-## 发送方身份固定：sysid = SYSID_TERMINAL, compid = COMPID_TERMINAL
+## 发送方身份：v2 终端上行 = 空 sysid（sysid_len=0）+ compid = COMPID_TERMINAL
 static func Build_Cmd(cmd: Dictionary) -> PackedByteArray:
 	var msgid: int = cmd.get("msgid", -1)
 	var payload := PackedByteArray()
@@ -201,7 +207,7 @@ static func Build_Cmd(cmd: Dictionary) -> PackedByteArray:
 		_:
 			printerr("[OrionMessages] unknown cmd msgid: ", msgid)
 			return PackedByteArray()
-	return OrionFrame.Encode_Frame(msgid, ProtocolDef.SYSID_TERMINAL, ProtocolDef.COMPID_TERMINAL, payload)
+	return OrionFrame.Encode_Frame(msgid, PackedByteArray(), ProtocolDef.COMPID_TERMINAL, payload)
 
 
 static func _Fail(msg: String) -> Dictionary:

@@ -38,6 +38,39 @@
 - **主场景冒烟**：headless 60 帧无脚本错误
 - 用法：`godot --headless -s src/test/test_orion_protocol.gd` / `-s src/test/test_e2e_orion.gd`
 
+## 协议 v2 适配（2026-08-10，Rust 端已实现，Pictor 待改）
+
+### v2 变化（相对 v1）
+| 项 | v1（Pictor 现状） | v2（Rust 已实现） |
+|---|---|---|
+| 帧固定头 | 10B 含 sysid(1B) | **10B 含 sysid_len(1B)**，payload 偏移 = 10 + sysid_len |
+| sysid | 1B 定值（终端 200） | **变长**：sysid_len(1B) + 完整 PeerId（libp2p multihash 约 34B：0x12+0x20+32B 公钥；变长按 sysid_len 动态解析）；空身份 = len 0 |
+| 上行身份 | sysid=200 + compid=200 | **sysid_len=0 + compid=200** |
+| ORION_POSE | 24B | **33B**：+ valid u8@24, sub_gx i32@25, sub_gy i32@29 |
+| 其余 4 消息 | — | 布局不变 |
+
+### ⚠️ 双向不兼容（升级断点）
+- Pictor v1 上行（offset 6=200）→ Rust v2 解读为 sysid_len=200 → 长度校验失败 → **命令静默丢弃**
+- Rust v2 下行（sysid_len=38）→ Pictor v1 解码错位
+- 必须同批升级：协议层 + test_ws_server + 测试
+
+### 改动清单（子 agent 分析 2026-08-10）
+1. `protocol_def.gd`：删/弃用 SYSID_TERMINAL；保留 COMPID_*；可选加 SYSID_LEN_MAX=255 / PEER_ID_LEN_ED25519=38
+2. `orion_frame.gd`：常量重构（FIXED_HEADER_SIZE=10 / SYSID_LEN_OFFSET=6 / SYSID_START=7）；Encode_Frame(msgid, sysid: PackedByteArray, compid, payload) 新签名；Decode_Frame 动态偏移 + 返回 sysid；_Fail 的 sysid 改 PackedByteArray
+3. `orion_messages.gd`：Encode_Pose/Decode_Pose 33B（valid/sub_gx/sub_gy，带默认值参数）；Build_Cmd 传空 sysid
+4. `test_ws_server.gd`：两处 Encode_Frame 调用改空 sysid（或假 peer_id（任意长度，如 34B））
+5. `test_orion_protocol.gd`：帧断言/endianness（新增 sysid_len>0 用例）/pose 33B/build_cmd 空身份
+6. `message_parser.gd`（可选）：透传 frame.sysid
+7. `docs/orion_protocol.md`：§3.1 布局表 24B→33B
+
+### 子任务
+- [x] 11. protocol_def.gd 常量更新（删 SYSID_TERMINAL，加 SYSID_LEN_MAX）✅ 2026-08-10
+- [x] 12. orion_frame.gd v2 帧编解码（变长 sysid：FIXED_HEADER_SIZE=10 + sysid_len 动态偏移）✅ 2026-08-10
+- [x] 13. orion_messages.gd POSE 33B（valid/sub_gx/sub_gy）+ Build_Cmd 空身份 ✅ 2026-08-10
+- [x] 14. test_ws_server.gd 发送端适配（空 sysid）✅ 2026-08-10
+- [x] 15. 单元测试同步（帧/endianness 含 sysid_len>0 用例/pose 33B/build_cmd 空身份）✅ 2026-08-10
+- [x] 16. 端到端验证 + 文档 §3.1 修正 ✅ 2026-08-10
+
 ## 涉及文件
 
 | 文件 | 操作 | 说明 |

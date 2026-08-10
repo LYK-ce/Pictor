@@ -43,6 +43,19 @@ task_20_protocol_update：将 Pictor 现有 WebSocket 协议（JSON + 二进制 
 - auto_handler：LLM missions 数组 → 全部任务合并为一条 TASK_SET 广播
 - 取消（count=0）由 UI 显式触发——当前无此功能，不做（用户指示）
 - 测试：llm_string_type → llm_missions（含与 Rust 字节比对 3.0→40400000）
+## 协议 v2 适配分析（2026-08-10）
+- v2 变化：帧头 sysid 变长（sysid_len + 完整 PeerId，空身份 len=0）；POSE 扩展 33B（+valid/sub_gx/sub_gy）；其余 4 消息不变
+- ⚠️ v1/v2 双向不兼容：Pictor v1 上行 offset6=200 被 Rust 解读 sysid_len=200 → 命令丢弃；必须同批升级
+- 改动面：protocol_def / orion_frame（变长帧）/ orion_messages（POSE 33B + Build_Cmd 空身份）/ test_ws_server / 单元测试；（可选 message_parser 透传 sysid）
+- 文档：orion_protocol.md §3.1 布局表 24B→33B（stale，待修正）
+- 实施顺序：常量→帧→消息→单测（headless 逐层验证）→ 模拟端 → e2e
+## 协议 v2 实施完成（2026-08-10）
+- protocol_def：删 SYSID_TERMINAL，加 SYSID_LEN_MAX=255
+- orion_frame：v2 变长 sysid（FIXED_HEADER_SIZE=10，payload 偏移 = 10+sysid_len）；Encode_Frame(msgid, sysid: PackedByteArray, compid, payload)；Decode_Frame 返回 sysid
+- orion_messages：POSE 33B（valid u8@24 + sub_gx i32@25 + sub_gy i32@29，Encode 带默认值）；Build_Cmd 终端空身份（sysid_len=0 + compid=200）
+- test_ws_server：发送端空 sysid；测试：变长 sysid>0 用例、34B peer_id 大帧、POSE 33B、24B 旧帧拒绝
+- 验证：单元 10/10 PASS；e2e PASS（任务队列顺序）；冒烟 0 错误
+- 文档：orion_protocol.md §3.1 布局表 24B→33B（Pictor 副本；Orion 权威文档待同步）
 ## 阶段
 1. [进行中] 子 agent 代码阅读 → 确定改动清单 → 与用户讨论
 2. [ ] 实施
