@@ -90,3 +90,19 @@ static func _Normalize_Mission_Type(t) -> int:
 ## count = 0 → 取消全部任务，停车待命
 static func build_auto_cancel() -> Dictionary:
 	return {"msgid": ProtocolDef.MSGID_TASK_SET, "missions": []}
+
+
+# ─── ORION_MAP_FULL (msgid 2)：终端返还合并全量（阶段 2 多车聚合）────
+
+## 下发合并全量给新车：data = 本地合并 log-odds 表（65536B，u8 位模式）。
+## ⚠️ 元数据硬约束（车端 handle_map_full 严格校验，偏离即静默忽略）：
+##    origin=(0,0) / width=256 / height=256 / resolution=0.5。
+static func build_map_full(cells: PackedByteArray, origin_gx := 0, origin_gy := 0,
+		width := ProtocolDef.MAP_WIDTH, height := ProtocolDef.MAP_HEIGHT,
+		resolution := ProtocolDef.MAP_RESOLUTION) -> Dictionary:
+	return {
+		"msgid": ProtocolDef.MSGID_MAP_FULL,
+		"origin_gx": origin_gx, "origin_gy": origin_gy,
+		"width": width, "height": height,
+		"resolution": resolution, "data": cells,
+	}

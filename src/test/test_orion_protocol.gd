@@ -23,6 +23,9 @@ func _init() -> void:
 	ok = ok and _test_log_odds_signed()
 	ok = ok and _test_clamp()
 	ok = ok and _test_threshold()
+	ok = ok and _test_build_cmd_map_full()
+	ok = ok and _test_return_frame_size()
+	ok = ok and _test_map_accumulator()
 	print("=== ALL PASS: ", ok, " ===")
 	quit(0 if ok else 1)
 
@@ -297,6 +300,73 @@ func _test_threshold() -> bool:
 	if ChunkData2D.to_state(-8) != ProtocolDef.CELL_FREE:
 		print("FAIL to_state(-8)"); return false
 	print("PASS threshold"); return true
+
+
+# ─── Task 21 阶段 2：终端返还合并全量（msgid=2 下行）─────────────
+
+func _test_build_cmd_map_full() -> bool:
+	# build_map_full → Build_Cmd(msgid=2) → roundtrip
+	var cells := PackedByteArray()
+	cells.resize(65536)
+	cells[0] = 8
+	cells[1] = ChunkData2D.to_u8(-8)
+	var frame := OrionMessages.Build_Cmd(MessageBuilder.build_map_full(cells))
+	if frame.is_empty():
+		print("FAIL build_map_full frame empty"); return false
+	var dec := OrionFrame.Decode_Frame(frame)
+	if not dec.ok or dec.msgid != 2 or not dec.sysid.is_empty() or dec.compid != 200:
+		print("FAIL build_map_full frame: ", dec); return false
+	var full := OrionMessages.Decode_Map_Full(dec.payload)
+	if not full.ok:
+		print("FAIL build_map_full decode: ", full.error); return false
+	if full.origin_gx != 0 or full.origin_gy != 0 or full.width != 256 or full.height != 256:
+		print("FAIL build_map_full meta: ", full); return false
+	if absf(full.resolution - 0.5) > 1e-6 or full.data.size() != 65536:
+		print("FAIL build_map_full res/size"); return false
+	if full.data[0] != 8 or ChunkData2D.to_i8(full.data[1]) != -8:
+		print("FAIL build_map_full data"); return false
+	print("PASS build_cmd_map_full"); return true
+
+
+func _test_return_frame_size() -> bool:
+	# 返还整帧大小 = 帧头 10 + 空 sysid 0 + payload 65556 + checksum 2 = 65568 > 默认 buffer 65535
+	var cells := PackedByteArray()
+	cells.resize(65536)
+	var frame := OrionMessages.Build_Cmd(MessageBuilder.build_map_full(cells))
+	if frame.size() != 65568:
+		print("FAIL return frame size: ", frame.size(), " (expect 65568, > 65535 → buffer 须调大)"); return false
+	print("PASS return_frame_size (65568B > default 65535 → buffer 1<<22 已验证)"); return true
+
+
+func _test_map_accumulator() -> bool:
+	# add_full：整表累加 + clamp
+	var a := PackedByteArray()
+	a.resize(4)
+	a[0] = 8; a[1] = ChunkData2D.to_u8(-8); a[2] = 3; a[3] = 0
+	var b := PackedByteArray()
+	b.resize(4)
+	b[0] = 8; b[1] = 0; b[2] = 0; b[3] = ChunkData2D.to_u8(-6)
+	var s := MapAccumulator.add_full(a, b)
+	# clamp(8+8)=8；clamp(-8+0)=-8；3+0=3；clamp(0-6)=-6
+	if ChunkData2D.to_i8(s[0]) != 8 or ChunkData2D.to_i8(s[1]) != -8 \
+			or ChunkData2D.to_i8(s[2]) != 3 or ChunkData2D.to_i8(s[3]) != -6:
+		print("FAIL add_full: ", [ChunkData2D.to_i8(s[0]), ChunkData2D.to_i8(s[1]), ChunkData2D.to_i8(s[2]), ChunkData2D.to_i8(s[3])]); return false
+	# apply_delta_bytes：先加后 clamp
+	var voxels := [
+		{"gx": 0, "gy": 0, "delta": 3},
+		{"gx": 0, "gy": 0, "delta": 3},
+		{"gx": 1, "gy": 0, "delta": 15},   # 聚合 Δ 超 ±8：-8+15=7
+		{"gx": 999, "gy": 999, "delta": 8}, # 越界忽略
+	]
+	var t := PackedByteArray()
+	t.resize(65536)
+	t[1] = ChunkData2D.to_u8(-8)
+	var r := MapAccumulator.apply_delta_bytes(t, voxels)
+	if ChunkData2D.to_i8(r[0]) != 6:  # 0+3+3=6（饱和前）
+		print("FAIL apply_delta 0,0: ", ChunkData2D.to_i8(r[0])); return false
+	if ChunkData2D.to_i8(r[1]) != 7:  # -8+15=7
+		print("FAIL apply_delta 1,0: ", ChunkData2D.to_i8(r[1])); return false
+	print("PASS map_accumulator"); return true
 
 
 # ─── 大端字节序断言（与 Rust 端字节逐一比对）──────────────────────

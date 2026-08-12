@@ -78,7 +78,7 @@ func _match_orion_msg(msgid: int, data: Dictionary) -> void:
 				elif lg < -th: c_free += 1
 				else: c_unk += 1
 			print("[WS] map_full: chunk(%d,%d) cells=%d [free:%d occupied:%d unknown:%d]" % [data.chunk_x, data.chunk_y, cells.size(), c_free, c_occ, c_unk])
-			EventBus.map_full_received.emit(data.chunk_x, data.chunk_y, cells)
+			EventBus.map_full_received.emit(_vehicle_id, data.chunk_x, data.chunk_y, cells)
 		ProtocolDef.MSGID_MAP_DELTA:
 			EventBus.map_delta_received.emit(data.voxels)
 		_:
@@ -112,7 +112,8 @@ func _on_message(text: String) -> void:
 func _connect() -> void:
 	_state = State.CONNECTING
 	_ws = WebSocketPeer.new()
-	_ws.inbound_buffer_size = 1 << 22  # 4MB
+	_ws.inbound_buffer_size = 1 << 22   # 4MB：接收车端 own FULL（65KB 超默认 65535）
+	_ws.outbound_buffer_size = 1 << 22  # 4MB：发送返还合并全量（阶段 2，65KB 超默认 65535）
 	var err := _ws.connect_to_url(_url)
 	if err != OK:
 		printerr("[WS] connect failed: ", err)

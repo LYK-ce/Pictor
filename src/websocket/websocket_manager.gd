@@ -1,9 +1,10 @@
 extends Node
-## Present by KeJi
-## Date: 2026-07-12
+## Presented by KeJi
+## Date ： 2026-08-12
 ##
 ## WebSocketManager — 管理多个 WebSocket 连接
 ## 下行命令：cmd_send(vehicle_id, Dictionary) → OrionMessages.Build_Cmd 编码为帧 → send_binary
+## 阶段 2：订阅 map_merged（某车 own 聚合完成）→ 返还合并全量（msgid=2）
 
 @export var ws_client_scene: PackedScene
 
@@ -15,6 +16,7 @@ func _ready() -> void:
 	EventBus.ws_disconnect_requested.connect(close_connection)
 	EventBus.vehicle_registered.connect(_on_vehicle_registered)
 	EventBus.cmd_send.connect(_on_cmd_send)
+	EventBus.map_merged.connect(_on_map_merged)
 
 
 func create_connection(url: String) -> void:
@@ -65,6 +67,13 @@ func _on_cmd_send(vehicle_id: String, cmd: Dictionary) -> void:
 			printerr("[WS-Mgr] cmd encode failed: ", cmd)
 			return
 		ws.send_binary(frame)
+
+
+## 阶段 2：某车 own FULL 聚合完成 → 向该车返还当前合并全量（复用 cmd_send 下行路径）
+func _on_map_merged(vehicle_id: String, _chunk_x: int, _chunk_y: int, cells: PackedByteArray) -> void:
+	if not _vehicles.has(vehicle_id):
+		return  # 该车已断开（own FULL 之后断链的竞态窗口），跳过返还
+	EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_map_full(cells))
 
 
 func get_vehicles() -> Array[String]:

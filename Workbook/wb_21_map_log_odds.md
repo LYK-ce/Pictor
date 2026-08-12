@@ -26,3 +26,17 @@
 - 测试：单元 13/13 PASS（新增 signed/clamp/threshold）；e2e PASS（map_full log-odds wall + delta 到达 max|Δ|=15）；主场景 headless 90 帧冒烟无脚本错误。
 - 文档：orion_protocol.md（§3 频率/§3.2/§3.3 + 同批发布警告）、websocket_protocol.md（废弃头注）、multi_robot_map.md（§6.7 已实施标注）。
 - 遗留：与车端真机联调 ⬜（待车端 WS 可用）；task_21 待归档（需人类确认）。
+
+## 2026-08-12 阶段 2 立项（多车终端聚合 + 返还全量）
+
+- 车端 task_13_2 更新：步骤 4 入站处理完成（consumer 放行 DELTA、WS 入站 FULL 替换 merged）、步骤 5 对账挂起、方案二定案（新车初始化=终端下发全量）。
+- 人类确认：单表直接累加（per-vehicle 槽否决，重连去重留后续）；返还时序 = 收 own 聚合后（防首车空表覆盖）。
+- 子 agent 调研定稿：4 缺口（信号无 vehicle_id / set_full 替换语义 / 无聚合完成信号 / Build_Cmd 无 msgid2）+ 1 硬缺口（返还 65568B > 默认 buffer 65535，client outbound + server inbound 须 1<<22）。
+- 方案：map_full_received 加 vehicle_id + 新增 map_merged；accumulate_full（累加 clamp）+ map_merged → manager build_map_full → cmd_send 下发；test_ws_server 入站 FULL + send_delta/map_variant；新增两车 e2e。
+- task_21 文档已追加阶段 2 章节（设计决策/信号/时序/12 文件/8 边界/9 步实施顺序），待人类批准开工。
+
+## 2026-08-12 阶段 2 实施完成（10/11 项）
+
+- 已实施：EventBus 信号（map_full_received+vehicle_id / map_merged 新增）、Build_Cmd msgid=2 + build_map_full、map_accumulator.gd 纯静态、map_data_2d.accumulate_full（累加+emit map_merged+删 set_chunk_full）、websocket_client（vehicle_id+outbound 1<<22）、websocket_manager._on_map_merged、test_ws_server（入站 FULL 替换 merged/own 保留+inbound buffer+send_delta/map_variant+get_merged_cells/get_full_rx_count+修复 map_chunk 门控）、单测 16/16、两车 e2e 场景式 PASS（Phase A merged==ownA / Phase B clamp(8+8)=8+A/B-only 区分+终端表==返还）、单车 e2e 回归 PASS + 冒烟无错。
+- 关键验证：返还帧 65568B 经 buffer 1<<22 实测通过（两车 e2e 无丢帧）；accumulate_full 统计 occupied 1020 = 四边 1024 − 4 重叠角，clamp 语义精确。
+- 遗留：真车联调 ⬜（车端 WS 可用时）；重连/重复接入当新车处理（人类决定）；两车 e2e 需新 MapAccumulator class 注册（已跑 --import 刷新 class cache）。

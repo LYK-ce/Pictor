@@ -202,6 +202,17 @@ static func Build_Cmd(cmd: Dictionary) -> PackedByteArray:
 	var msgid: int = cmd.get("msgid", -1)
 	var payload := PackedByteArray()
 	match msgid:
+		ProtocolDef.MSGID_MAP_FULL:
+			# 阶段 2：终端返还合并全量（车端 handle_map_full 严格校验元数据）
+			payload = Encode_Map_Full(
+				cmd.get("time_boot_ms", Time.get_ticks_msec() & 0xFFFFFFFF),
+				cmd.get("origin_gx", 0),
+				cmd.get("origin_gy", 0),
+				cmd.get("width", ProtocolDef.MAP_WIDTH),
+				cmd.get("height", ProtocolDef.MAP_HEIGHT),
+				cmd.get("resolution", ProtocolDef.MAP_RESOLUTION),
+				cmd.get("data", PackedByteArray()),
+			)
 		ProtocolDef.MSGID_MANUAL_CONTROL:
 			payload = Encode_Manual_Control(cmd.get("action", ProtocolDef.ACTION_STOP), cmd.get("param", 0))
 		ProtocolDef.MSGID_TASK_SET:

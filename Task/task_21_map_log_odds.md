@@ -282,8 +282,89 @@ _map_ok = has_wall_log
 3. 主场景冒烟：headless 跑 main.tscn 60 帧无脚本错误（注意 main.tscn 挂 3 个测试 server，多车覆盖仅影响测试展示）
 4. 联调（可选）：连车端 WS 服务，确认 FULL 初始化 + DELTA 累加后显示与车端一致
 
+## 多车终端聚合 + 返还全量（阶段 2，2026-08-12 方案定稿）
+
+> 车端对应：`Workspace/Orion/Task/task_13_2_crdt_map.md`（方案 C 终端聚合 + 方案二新车初始化=终端下发全量；车端步骤 4 已实施）。
+> 调研：2026-08-12 子 agent 只读梳理（方案定稿，未实施）。
+
+### 设计决策（已与人类确认）
+
+| 项 | 决定 |
+|---|---|
+| 聚合存储 | **单表直接累加**（不做 per-vehicle 槽）：接入 own FULL → 表 += own（clamp ±8）；平时 Δ → 表 += Δ。流式 Σ ≡ 方案 C 的 Σ 函数 |
+| set_full 语义 | 替换 → **累加**（`accumulate_full`）；表初始全 0，首车累加 ≡ 替换，单车零影响 |
+| 返还触发 | **收到该车 own FULL 聚合完成后**（非 vehicle_registered，避免首车空表覆盖） |
+| 返还内容 | Pictor 当前本地合并表（Σ 各车 own 的流式结果），只发给刚接入的车 |
+| 重连/重复接入 | **当新车处理**（2026-08-12 人类决定：整表累加，重复计数不处理） |
+
+### EventBus 信号方案
+
+| 信号 | 签名 | 发送方 → 接收方 | 说明 |
+|---|---|---|---|
+| `map_full_received`（**改签名**） | `(vehicle_id, chunk_x, chunk_y, cells)` | websocket_client → map_data_2d | 加 vehicle_id 用于路由返还 |
+| `map_merged`（**新增**） | `(vehicle_id, chunk_x, chunk_y, cells)` | map_data_2d（聚合完成） → websocket_manager | 载荷 = 合并表快照；驱动返还下发 |
+| `cmd_send`（复用） | `(vehicle_id, cmd)` | websocket_manager._on_map_merged → _on_cmd_send | 经 `Build_Cmd(msgid=2)` 编码下发 |
+
+### 接入握手时序
+
+```
+车A ──hello──▶ Pictor（_identified=true, vehicle_registered）
+车A ──MAP_FULL(ownA)──▶ websocket_client ──map_full_received(A,0,0,ownA)──▶ map_data_2d
+    map_data_2d.accumulate_full：表 += ownA（clamp）→ chunk_updated（显示）→ map_merged(A,表)
+    websocket_manager._on_map_merged：cmd_send(A, build_map_full(表))
+Pictor ──MAP_FULL(mergedA)──▶ 车A（车端 set_log_odds 替换 merged，own 保留）
+之后：车A 1s/次 MAP_DELTA ──▶ set_delta 累加；B 接入走同链路，返还 clamp(ownA+ownB)
+```
+
+### 涉及文件（12 项）
+
+| 文件 | 操作 | 说明 |
+|---|---|---|
+| `src/event_bus/event_bus.gd` | 修改 | `map_full_received` 加 vehicle_id；新增 `map_merged`（P0） |
+| `src/websocket/websocket_client.gd` | 修改 | emit 带 vehicle_id；**`_connect` 补 outbound_buffer_size=1<<22**（返还 65KB 帧 > 默认 65535，硬缺口）（P0） |
+| `src/renderer_2d/map_data_2d.gd` | 修改 | `set_full`→`accumulate_full`（累加 clamp）；聚合后 emit `map_merged`；删 `set_chunk_full`（P0） |
+| `src/websocket/protocol/orion_messages.gd` | 修改 | `Build_Cmd` 增 msgid=2 分支（调 `Encode_Map_Full`）（P0） |
+| `src/websocket/protocol/message_builder.gd` | 新增 | `build_map_full(cells, origin=0, 256×256, 0.5)`（P0） |
+| `src/websocket/websocket_manager.gd` | 修改 | 订阅 `map_merged` → `build_map_full` → `cmd_send`（P1） |
+| `src/test/test_ws_server.gd` | 修改 | `_Read_Incoming` 加 MAP_FULL 入站（替换 merged、own 保留）；`inbound_buffer_size=1<<22`；`@export send_delta`/`map_variant`（P1） |
+| `src/test/test_orion_protocol.gd` | 修改 | 新增 `_test_accumulate_full` / `_test_build_cmd_map_full` / `_test_return_frame_size`（P1） |
+| `src/test/test_e2e_multivehicle.gd` | **新增** | 两车接入握手 e2e（A→ownA→返还；B→ownB→返还 Σ，重叠 clamp 断言）（P1） |
+| `docs/orion_protocol.md` | 修改 | §3.2 方向语义（车→终端 own 上报 / 终端→车 下发合并全量）+ 时序红线 + 返还帧大小警告（P2） |
+| `docs/multi_robot_map.md` | 修改（可选） | §6.7 标注多车聚合已实施（P2） |
+| 本任务文档 | 修改 | 阶段 2 章节（P2） |
+
+**零改动**：`chunk_data_2d.gd`、`map_container_2d.gd`、`renderer_2d.gd`、`renderer_3d.gd`、`test_e2e_orion.gd`。
+
+### 边界与风险（首版接受项标注）
+
+| # | 场景 | 处置 |
+|---|---|---|
+| 1 | 重连/车重启重复计数（own 双倍） | **当新车处理**（人类决定：重复计数接受，不做去重） |
+| 2 | **返还 65KB 帧超默认 buffer** | **必改**：Pictor client outbound + TestWSServer inbound 均 `1<<22` |
+| 3 | 多车同时接入 | 单线程同步链逐车处理，无冲突 |
+| 4 | Pictor 重启 | 表清空 → 首车从 0 累加，语义正确（保持 save 禁用） |
+| 5 | FULL 替换吞在途 Δ | 首版接受（边界 #5） |
+| 6 | 存量车 gossip 贡献暂缺 | 首版接受（B 接入后 Δ 流补回） |
+| 7 | own FULL 后返还前断链 | manager `_vehicles.has()` 守卫跳过，无害 |
+| 8 | 信号签名破坏性变更 | 全项目仅 2 处引用（已核实），同批修改 |
+
+### 实施状态（2026-08-12 全部完成）
+
+1. ✅ EventBus 信号变更（`map_full_received` 加 vehicle_id + 新增 `map_merged`）
+2. ✅ `Build_Cmd` msgid=2 + `message_builder.build_map_full`（含元数据硬约束注释）
+3. ✅ `map_accumulator.gd` 纯静态类（add_full / apply_delta_bytes，可 -s 单测）
+4. ✅ `map_data_2d.accumulate_full`（累加 clamp + emit map_merged；删 set_chunk_full）
+5. ✅ `websocket_client`（emit 带 vehicle_id + outbound buffer 1<<22）
+6. ✅ `websocket_manager._on_map_merged` 订阅下发（复用 cmd_send 路径，_vehicles 守卫）
+7. ✅ `test_ws_server` 升级（入站 MAP_FULL 替换 merged/own 保留 + inbound buffer + send_delta/map_variant + get_merged_cells/get_full_rx_count；顺带修复 review 🟡-1 map_chunk 门控）
+8. ✅ 单测 16/16 PASS（新增 build_cmd_map_full / return_frame_size 65568B / map_accumulator）
+9. ✅ `test_e2e_multivehicle` 场景式两车 e2e PASS（Phase A merged==ownA；Phase B 重叠 clamp(8+8)=8、A-only/B-only 区分、终端表==返还逐字节一致）
+10. ✅ 回归：单车 e2e PASS + 主场景冒烟无脚本错误
+11. ⬜ 联调（真车/车端 WS 服务，待可用）
+
 ## 遗留事项
 
-- 对账（终端聚合 Σ + 整图下发替换）→ 多车阶段再做
+- ~~对账（终端聚合 Σ + 整图下发替换）→ 多车阶段再做~~ → **阶段 2 已立项**（方案定稿，待实施）
+- ~~多车 per-vehicle 地图表~~ → **已否决**（2026-08-12 人类确认：单表直接累加即可）
+- 重连/重复接入 → **当新车处理**（整表累加，重复计数接受）
 - 动态障碍不进共享图（另行设计）
-- 多车 per-vehicle 地图表（MapData2D 需引入 vehicle_id 维度）

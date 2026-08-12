@@ -187,6 +187,13 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 发送时机：连接建立后（hello 之后）发送**一次**；后续按需重发（协议层不做主动周期推送）。⚠️ 与车端**同批升级**：msgid=2 语义替换无兼容过渡期，旧三态数据按 log-odds 解释会得到乱图。
 
+**方向语义（阶段 2，2026-08-12）**：
+- **车 → 终端**：接入时上报 own 整表（现有，连接时一次）
+- **终端 → 车**：新车接入后**返还合并全量**（新增，msgid=2 复用）——终端收到该车 own FULL 并聚合完成后，把本地合并表（Σ 各车 own 的流式结果）编码为 MAP_FULL 下发；车端 `set_log_odds` 替换 merged（own 保留）
+- **时序红线**：返还必须在**收到该车 own FULL 之后**（不能在 `vehicle_registered` 时下发，否则首车空表会清空车端 merged）
+- **返还元数据硬约束**：origin=(0,0) / width=256 / height=256 / resolution=0.5，任何偏离被车端静默忽略（warn）
+- **返还帧大小**：payload 20+65536=65556B，整帧 65568B > WebSocketPeer 默认 buffer 65535 —— **收发双方必须调大 buffer**（Pictor client outbound、车端 WS inbound 均 ≥ 1<<22）
+
 ### 3.3 ORION_MAP_DELTA（msgid 3）— 地图增量
 
 仅传变化的格子。4 字节 len 下，一帧可承载 13107 项（65535 字节），足以覆盖单次 SLAM 更新（数百~数千项），**无需分帧**。

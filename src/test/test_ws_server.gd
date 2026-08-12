@@ -22,6 +22,12 @@ extends Node
 ## 是否在 hello 之后发送全量地图
 @export var send_map := false
 
+## 是否发送 1Hz DELTA 流（多车 e2e 关掉保确定性；默认 true 兼容单车测试）
+@export var send_delta := true
+
+## 确定性图变体：0=上墙+中央空地(120~135)（默认）/ 1=左墙+中央空地(40~55)（两车 e2e 区分）
+@export var map_variant := 0
+
 ## 地图资源引用（保留兼容；实际发送用 _Build_LogOdds_Map 确定性图，Task 21）
 @export var map_chunk: ChunkData2D
 
@@ -62,6 +68,8 @@ var _timer := 0.0
 
 # 地图模拟（Task 21：log-odds + 1Hz 聚合 delta）
 var _log_map := PackedByteArray()      # 本车 own 表（u8 位模式，65536）
+var _merged_map := PackedByteArray()   # 本车 merged 表（阶段 2：终端返还 FULL 替换目标，own 保留）
+var _full_rx_count := 0                # 收到终端返还 FULL 的次数（e2e 时序判定）
 var _pending: Dictionary = {}         # {idx: 窗口净变化}（不预 clamp，同车端）
 var _delta_frame := 0
 
@@ -91,7 +99,7 @@ func _process(delta: float) -> void:
 				print("[" + vehicle_id + "] handshake complete")
 				await get_tree().create_timer(0.5).timeout
 				_Send_Hello()
-				if send_map and map_chunk:
+				if send_map:
 					_Send_Map()
 
 		ConnState.CONNECTED:
@@ -102,7 +110,7 @@ func _process(delta: float) -> void:
 				return
 			_Read_Incoming()
 			_Update_Movement(delta)
-			if send_map and _log_map.size() == CHUNK_SIZE * CHUNK_SIZE:
+			if send_map and send_delta and _log_map.size() == CHUNK_SIZE * CHUNK_SIZE:
 				_Tick_Map_Delta()
 			_timer += delta
 			if _timer >= 0.1:  # 10Hz
@@ -159,6 +167,7 @@ func _Try_Accept() -> void:
 		return
 	var tcp := _server.take_connection()
 	_peer = WebSocketPeer.new()
+	_peer.inbound_buffer_size = 1 << 22   # 接收终端返还 65KB FULL（阶段 2，默认 65535 会丢帧）
 	_peer.outbound_buffer_size = 1 << 22
 	_peer.accept_stream(tcp)
 	_conn_state = ConnState.HANDSHAKING
@@ -191,7 +200,8 @@ func _Send_Hello() -> void:
 
 func _Send_Map() -> void:
 	var cells: PackedByteArray = _Build_LogOdds_Map()
-	_log_map = cells.duplicate()  # 初始化 own 表（DELTA 聚合基准）
+	_log_map = cells.duplicate()     # 初始化 own 表（DELTA 聚合基准）
+	_merged_map = cells.duplicate()  # 初始化 merged（单车 = own）
 
 	var payload := OrionMessages.Encode_Map_Full(
 		Time.get_ticks_msec() & 0xFFFFFFFF,
@@ -206,19 +216,28 @@ func _Send_Map() -> void:
 	_Send_Binary(frame)
 
 
-## 确定性 log-odds 图：边界一圈 +8（墙）/ 中央 16×16 块 −8（空地）/ 其余 0（未知）
+## 确定性 log-odds 图：四周边界 +8（墙）/ 中央 16×16 块 −8（空地）/ 其余 0（未知）
+## map_variant 0：上/下边界 +8 + 中央空地 (120~135)；variant 1：左/右边界 +8 + 中央空地 (40~55)
+## 两车 e2e 用 variant 0/1 区分：重叠格 (0,0) 均为 +8 → 断言 clamp；空地不重叠
 func _Build_LogOdds_Map() -> PackedByteArray:
 	var cells := PackedByteArray()
 	cells.resize(CHUNK_SIZE * CHUNK_SIZE)
-	for gx in range(CHUNK_SIZE):
-		cells[gx] = 8
-		cells[(CHUNK_SIZE - 1) * CHUNK_SIZE + gx] = 8
-	for gy in range(CHUNK_SIZE):
-		cells[gy * CHUNK_SIZE] = 8
-		cells[gy * CHUNK_SIZE + CHUNK_SIZE - 1] = 8
-	for gy in range(120, 136):
-		for gx in range(120, 136):
-			cells[gy * CHUNK_SIZE + gx] = ChunkData2D.to_u8(-8)
+	if map_variant == 1:
+		# 左/右边界墙 +8
+		for gy in range(CHUNK_SIZE):
+			cells[gy * CHUNK_SIZE] = 8
+			cells[gy * CHUNK_SIZE + CHUNK_SIZE - 1] = 8
+		for gy in range(40, 56):
+			for gx in range(40, 56):
+				cells[gy * CHUNK_SIZE + gx] = ChunkData2D.to_u8(-8)
+	else:
+		# 上/下边界墙 +8
+		for gx in range(CHUNK_SIZE):
+			cells[gx] = 8
+			cells[(CHUNK_SIZE - 1) * CHUNK_SIZE + gx] = 8
+		for gy in range(120, 136):
+			for gx in range(120, 136):
+				cells[gy * CHUNK_SIZE + gx] = ChunkData2D.to_u8(-8)
 	return cells
 
 
@@ -244,6 +263,11 @@ func _Apply_Delta_At(gx: int, gy: int, d: int) -> void:
 	var new := clampi(old + d, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP)
 	var real := new - old  # 真实差分（clamp 后）
 	_log_map[idx] = ChunkData2D.to_u8(new)
+	# merged 同步 saturating 更新（对齐车端 grid.update 双写：own 与 merged 同源演进）
+	if _merged_map.size() == CHUNK_SIZE * CHUNK_SIZE:
+		var m_old := ChunkData2D.to_i8(_merged_map[idx])
+		var m_new := clampi(m_old + d, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP)
+		_merged_map[idx] = ChunkData2D.to_u8(m_new)
 	if real != 0:
 		_pending[idx] = _pending.get(idx, 0) + real
 
@@ -289,12 +313,26 @@ func _Read_Incoming() -> void:
 			printerr("[" + vehicle_id + "] orion frame error: ", result.error)
 			continue
 		match result.msgid:
+			ProtocolDef.MSGID_MAP_FULL:
+				_Handle_Map_Full(result.data)
 			ProtocolDef.MSGID_MANUAL_CONTROL:
 				_Handle_Control(result.data.action, result.data.param)
 			ProtocolDef.MSGID_TASK_SET:
 				_Handle_Task_Set(result.data.missions)
 			_:
 				printerr("[" + vehicle_id + "] unhandled msgid: ", result.msgid)
+
+
+## 阶段 2：模拟车端 handle_map_full —— 终端返还合并全量 → set_log_odds 替换 merged，own 保留
+func _Handle_Map_Full(data: Dictionary) -> void:
+	if data.chunk_x == 0 and data.chunk_y == 0 and data.width == 256 and data.height == 256 \
+			and data.cells.size() == CHUNK_SIZE * CHUNK_SIZE and absf(data.resolution - 0.5) < 1e-6:
+		_merged_map = data.cells.duplicate()  # set_log_odds 替换 merged
+		_full_rx_count += 1
+		# _log_map 不变（own 保留，对账上报数据源）
+		print("[" + vehicle_id + "] received merged FULL #", _full_rx_count, " (", data.cells.size(), " cells) — merged replaced, own kept")
+	else:
+		printerr("[" + vehicle_id + "] merged FULL metadata mismatch — ignored: ", data)
 
 
 func _Handle_Control(action: int, param: int) -> void:
@@ -372,3 +410,17 @@ func _Start_Next_Task() -> void:
 		# 未知任务类型：跳过
 		_task_queue.pop_front()
 		_Start_Next_Task()
+
+
+# ─── e2e 断言辅助（阶段 2）──────────────────────────────────
+
+func get_own_cells() -> PackedByteArray:
+	return _log_map.duplicate()
+
+
+func get_merged_cells() -> PackedByteArray:
+	return _merged_map.duplicate()
+
+
+func get_full_rx_count() -> int:
+	return _full_rx_count
