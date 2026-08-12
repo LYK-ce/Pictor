@@ -1,5 +1,7 @@
 # Task 20: Protocol Update
 
+> 📦 **已归档（2026-08-12）**：全部子任务完成（v1 + v2），测试通过，Pictor/Rust 端同批切换完成。遗留事项见文末。
+
 ## 目标
 
 将 Pictor 现有 WebSocket 协议（JSON 文本帧 + 二进制 map_full）迁移为 **Orion 统一通信协议**（MAVLink 风格帧 + ORION_ 自定义消息）。规范文档：`docs/orion_protocol.md`。
