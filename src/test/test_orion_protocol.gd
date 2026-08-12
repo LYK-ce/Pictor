@@ -1,8 +1,12 @@
 extends SceneTree
 
+## Presented by KeJi
+## Date ： 2026-08-11
+##
 ## Orion 协议 v2 编解码 roundtrip 测试（headless）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
 ## 覆盖：帧/消息 roundtrip（v2 变长 sysid）+ 大端字节序断言（与 Rust 端字节比对）
+## Task 21：地图改 log-odds 语义（delta i8 位模式 / clamp / 阈值派生边界）
 
 func _init() -> void:
 	var ok := true
@@ -16,6 +20,9 @@ func _init() -> void:
 	ok = ok and _test_parser_dispatch()
 	ok = ok and _test_endianness()
 	ok = ok and _test_llm_missions()
+	ok = ok and _test_log_odds_signed()
+	ok = ok and _test_clamp()
+	ok = ok and _test_threshold()
 	print("=== ALL PASS: ", ok, " ===")
 	quit(0 if ok else 1)
 
@@ -77,10 +84,12 @@ func _test_pose() -> bool:
 
 
 func _test_map_full() -> bool:
+	# Task 21：data = log-odds i8 位模式（pattern [0, 8, -8, 3]）
 	var data := PackedByteArray()
 	data.resize(256 * 256)
+	var pattern := [0, 8, -8, 3]
 	for i in range(data.size()):
-		data[i] = (i % 3) * 100  # 0 / 100 / 200
+		data[i] = pattern[i % 4] & 0xFF
 	var payload := OrionMessages.Encode_Map_Full(999, -256, 256, 256, 256, 0.5, data)
 	if payload.size() != 20 + 65536:
 		print("FAIL map_full size: ", payload.size()); return false
@@ -91,30 +100,43 @@ func _test_map_full() -> bool:
 		print("FAIL map_full header: ", dec); return false
 	if absf(dec.resolution - 0.5) > 0.0001 or dec.data.size() != 65536:
 		print("FAIL map_full meta"); return false
-	if dec.data[3] != 0 or dec.data[4] != 100 or dec.data[5] != 200:
-		print("FAIL map_full data"); return false
+	# data[3]=3, data[4]=0, data[5]=8（pattern 0,8,248,3 的位模式）
+	if dec.data[3] != 3 or dec.data[4] != 0 or dec.data[5] != 8:
+		print("FAIL map_full data: ", [dec.data[3], dec.data[4], dec.data[5]]); return false
 	print("PASS map_full"); return true
 
 
 func _test_map_delta() -> bool:
+	# Task 21：delta i8 差分（负值位模式 + 聚合净变化超 ±8 场景）
 	var entries := [
-		{"gx": -1, "gy": 2, "state": 100},
-		{"gx": 300, "gy": -400, "state": 255},
+		{"gx": -1, "gy": 2, "delta": -8},
+		{"gx": 300, "gy": -400, "delta": 15},
+		{"gx": 1, "gy": 1, "delta": -1},
 	]
 	var payload := OrionMessages.Encode_Map_Delta(777, entries)
-	if payload.size() != 6 + 18:
-		print("FAIL map_delta size"); return false
+	if payload.size() != 6 + 27:
+		print("FAIL map_delta size: ", payload.size()); return false
 	var dec := OrionMessages.Decode_Map_Delta(payload)
 	if not dec.ok:
 		print("FAIL map_delta decode: ", dec.error); return false
-	if dec.count != 2 or dec.entries.size() != 2:
+	if dec.count != 3 or dec.entries.size() != 3:
 		print("FAIL map_delta count"); return false
 	var e0: Dictionary = dec.entries[0]
 	var e1: Dictionary = dec.entries[1]
-	if e0.gx != -1 or e0.gy != 2 or e0.state != 100:
+	var e2: Dictionary = dec.entries[2]
+	if e0.gx != -1 or e0.gy != 2 or e0.delta != -8:
 		print("FAIL map_delta e0: ", e0); return false
-	if e1.gx != 300 or e1.gy != -400 or e1.state != 255:
+	if e1.gx != 300 or e1.gy != -400 or e1.delta != 15:
 		print("FAIL map_delta e1: ", e1); return false
+	if e2.delta != -1:
+		print("FAIL map_delta e2: ", e2); return false
+	# 位模式断言：-8 → 0xF8（entry0 delta @14）、15 → 0x0F（entry1 delta @23）、-1 → 0xFF（entry2 delta @32）
+	if payload[14] != 0xF8:
+		print("FAIL delta -8 byte: ", payload[14]); return false
+	if payload[23] != 0x0F:
+		print("FAIL delta 15 byte: ", payload[23]); return false
+	if payload[32] != 0xFF:
+		print("FAIL delta -1 byte: ", payload[32]); return false
 	print("PASS map_delta"); return true
 
 
@@ -222,6 +244,61 @@ func _test_llm_missions() -> bool:
 	print("PASS llm_missions"); return true
 
 
+# ─── Task 21：log-odds 语义边界用例 ────────────────────────────
+
+func _test_log_odds_signed() -> bool:
+	# u8 ↔ i8 位模式转换（ChunkData2D 辅助）
+	if ChunkData2D.to_i8(0xF8) != -8:
+		print("FAIL to_i8(0xF8)"); return false
+	if ChunkData2D.to_i8(0xFF) != -1:
+		print("FAIL to_i8(0xFF)"); return false
+	if ChunkData2D.to_i8(0x80) != -128:
+		print("FAIL to_i8(0x80)"); return false
+	if ChunkData2D.to_i8(0x08) != 8:
+		print("FAIL to_i8(0x08)"); return false
+	if ChunkData2D.to_u8(-8) != 248 or ChunkData2D.to_u8(-1) != 255:
+		print("FAIL to_u8 negatives"); return false
+	if ChunkData2D.to_u8(8) != 8:
+		print("FAIL to_u8(8)"); return false
+	if ChunkData2D.to_i8(ChunkData2D.to_u8(-15)) != -15:
+		print("FAIL signed roundtrip -15"); return false
+	print("PASS log_odds_signed"); return true
+
+
+func _test_clamp() -> bool:
+	# 接收方语义：new = clamp(old + Δ, −8, +8)，先加后 clamp（Δ 可超 ±8）
+	if clampi(6 + 2, -8, 8) != 8:
+		print("FAIL clamp 6+2"); return false
+	if clampi(-8 + (-3), -8, 8) != -8:
+		print("FAIL clamp -8-3"); return false
+	if clampi(8 + 1, -8, 8) != 8:
+		print("FAIL clamp 8+1 saturated"); return false
+	if clampi(-8 + 1, -8, 8) != -7:
+		print("FAIL clamp -8+1"); return false
+	if clampi(-8 + 15, -8, 8) != 7:
+		print("FAIL clamp -8+15 (aggregated Δ=+15)"); return false
+	print("PASS clamp"); return true
+
+
+func _test_threshold() -> bool:
+	# 阈值派生严格边界：>+6 Occupied / <−6 Free / 恰好 ±6 与 0 为 Unknown
+	if ChunkData2D.to_state(6) != ProtocolDef.CELL_UNKNOWN:
+		print("FAIL to_state(6) should be Unknown"); return false
+	if ChunkData2D.to_state(7) != ProtocolDef.CELL_OCCUPIED:
+		print("FAIL to_state(7) should be Occupied"); return false
+	if ChunkData2D.to_state(-6) != ProtocolDef.CELL_UNKNOWN:
+		print("FAIL to_state(-6) should be Unknown"); return false
+	if ChunkData2D.to_state(-7) != ProtocolDef.CELL_FREE:
+		print("FAIL to_state(-7) should be Free"); return false
+	if ChunkData2D.to_state(0) != ProtocolDef.CELL_UNKNOWN:
+		print("FAIL to_state(0) should be Unknown"); return false
+	if ChunkData2D.to_state(8) != ProtocolDef.CELL_OCCUPIED:
+		print("FAIL to_state(8)"); return false
+	if ChunkData2D.to_state(-8) != ProtocolDef.CELL_FREE:
+		print("FAIL to_state(-8)"); return false
+	print("PASS threshold"); return true
+
+
 # ─── 大端字节序断言（与 Rust 端字节逐一比对）──────────────────────
 
 func _test_endianness() -> bool:
@@ -289,4 +366,13 @@ func _test_endianness() -> bool:
 	if ts.slice(2, 6) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
 		print("FAIL task_set f32 BE: ", ts.slice(2, 6)); return false
 
+	# 7) map_delta delta i8：-8 → 0xF8 位模式（Task 21）
+	var md := OrionMessages.Encode_Map_Delta(0, [{"gx": 0, "gy": 0, "delta": -8}])
+	if md[6 + 8] != 0xF8:
+		print("FAIL map_delta delta i8 byte: ", md[6 + 8]); return false
+	var dec_md := OrionMessages.Decode_Map_Delta(md)
+	if dec_md.entries[0].delta != -8:
+		print("FAIL map_delta decode -8: ", dec_md.entries[0]); return false
+
 	print("PASS endianness (BE bytes match Rust)"); return true
+

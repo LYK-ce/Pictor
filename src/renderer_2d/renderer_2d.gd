@@ -56,14 +56,15 @@ func _on_chunk_updated(chunk_x: int, chunk_y: int) -> void:
 	if cells.is_empty():
 		print("[Renderer2D] chunk_updated: chunk(%d,%d) EMPTY — skipping" % [chunk_x, chunk_y])
 		return
-	# DEBUG
-	var c0 := 0; var c100 := 0; var c255 := 0
+	# DEBUG（log-odds → 阈值 ±6 派生三态）
+	var c_free := 0; var c_occ := 0; var c_unk := 0
+	var th := ProtocolDef.LOG_ODDS_THRESHOLD
 	for i in range(cells.size()):
-		match cells[i]:
-			0: c0 += 1
-			100: c100 += 1
-			255: c255 += 1
-	print("[Renderer2D] chunk_updated: chunk(%d,%d) cells=%d [0:%d 100:%d 255:%d] → render" % [chunk_x, chunk_y, cells.size(), c0, c100, c255])
+		var lg := ChunkData2D.to_i8(cells[i])
+		if lg > th: c_occ += 1
+		elif lg < -th: c_free += 1
+		else: c_unk += 1
+	print("[Renderer2D] chunk_updated: chunk(%d,%d) cells=%d [free:%d occupied:%d unknown:%d] → render" % [chunk_x, chunk_y, cells.size(), c_free, c_occ, c_unk])
 	_map.render_chunk(chunk_x, chunk_y, cells)
 
 

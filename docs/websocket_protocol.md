@@ -1,5 +1,7 @@
 # WebSocket 通信协议
 
+> ⚠️ **已废弃（2026-08-11）**：本文件描述的是旧 JSON 文本协议（`hello/pose/map_delta/cmd`）。自 task_20 起 WebSocket 链路已迁移为 **Orion 二进制帧**（以 `docs/orion_protocol.md` 为准）；task_21 起地图消息数据语义为 **log-odds i8**。本文档仅作历史参考，不再维护。
+
 > **代码实现**: 协议定义/构造/解析统一在 `src/websocket/protocol/` 目录。
 > - `ProtocolDef` — 所有魔法字符串常量
 > - `MessageBuilder` — 下行消息构造（PC → 小车）

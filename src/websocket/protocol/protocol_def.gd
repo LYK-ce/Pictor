@@ -44,11 +44,18 @@ const MANUAL_DEFAULT_SPEED := 50
 const MISSION_TYPE_GOTO := 0
 
 
-# ─── cell 状态（内部存储与线上编码统一，零映射直传）────────────
+# ─── cell 三态（仅显示层阈值派生结果与旧测试比对用）────────────
+# Task 21：线上已不再传输三态（MAP_FULL/MAP_DELTA 改传 log-odds i8）
 
 const CELL_FREE := 0
 const CELL_OCCUPIED := 100
 const CELL_UNKNOWN := 255
+
+
+# ─── log-odds 常量（Task 21：车端 grid.rs 对齐）─────────────────
+
+const LOG_ODDS_CLAMP := 8          # clamp ±8（车端 OCCUPIED_CLAMP / FREE_CLAMP）
+const LOG_ODDS_THRESHOLD := 6      # >+6 Occupied / <−6 Free（严格，恰好 ±6 为 Unknown）
 
 
 # ─── sysid / compid 约定 ────────────────────────────────────

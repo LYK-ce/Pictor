@@ -68,15 +68,16 @@ func _match_orion_msg(msgid: int, data: Dictionary) -> void:
 		ProtocolDef.MSGID_POSE:
 			EventBus.pose_received.emit(_vehicle_id, data)
 		ProtocolDef.MSGID_MAP_FULL:
-			# DEBUG: 统计 cell 类型分布
+			# DEBUG: 统计 cell 类型分布（log-odds → 阈值 ±6 派生三态）
 			var cells: PackedByteArray = data.cells
-			var c0 := 0; var c100 := 0; var c255 := 0
+			var c_free := 0; var c_occ := 0; var c_unk := 0
+			var th := ProtocolDef.LOG_ODDS_THRESHOLD
 			for i in range(cells.size()):
-				match cells[i]:
-					0: c0 += 1
-					100: c100 += 1
-					255: c255 += 1
-			print("[WS] map_full: chunk(%d,%d) cells=%d [0:%d 100:%d 255:%d]" % [data.chunk_x, data.chunk_y, cells.size(), c0, c100, c255])
+				var lg := ChunkData2D.to_i8(cells[i])
+				if lg > th: c_occ += 1
+				elif lg < -th: c_free += 1
+				else: c_unk += 1
+			print("[WS] map_full: chunk(%d,%d) cells=%d [free:%d occupied:%d unknown:%d]" % [data.chunk_x, data.chunk_y, cells.size(), c_free, c_occ, c_unk])
 			EventBus.map_full_received.emit(data.chunk_x, data.chunk_y, cells)
 		ProtocolDef.MSGID_MAP_DELTA:
 			EventBus.map_delta_received.emit(data.voxels)

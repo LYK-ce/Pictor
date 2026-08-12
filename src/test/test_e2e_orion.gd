@@ -1,8 +1,12 @@
 extends SceneTree
 
+## Presented by KeJi
+## Date ： 2026-08-11
+##
 ## Orion 协议端到端测试（headless）：
 ## TestWSServer(模拟小车) ← WS ← 客户端（本脚本）
-## 链路验证：hello → pose(帧) → map_full(帧) → manual_control → task_set(队列替换+顺序) → cancel
+## 链路验证：hello → pose(帧) → map_full(log-odds) → map_delta(1Hz) → manual_control → task_set(队列替换+顺序) → cancel
+## Task 21：地图走 log-odds 语义（FULL 断言上边界 +8；DELTA 断言到达）
 ## 语义（对齐 Rust）：车默认 AUTO；Manual 模式下 task_set 被忽略
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
 
@@ -18,6 +22,7 @@ var _failures: Array[String] = []
 var _got_hello := false
 var _pose_count := 0
 var _map_ok := false
+var _map_delta_count := 0
 var _sent_manual := false
 var _manual_moving := false
 var _sent_task := false
@@ -114,13 +119,23 @@ func _Poll_Client() -> void:
 					_On_Pose(r.data)
 				ProtocolDef.MSGID_MAP_FULL:
 					if r.data.cells.size() == 65536 and r.data.width == 256:
-						var has_100 := false
-						for i in range(100):
-							if r.data.cells[i] == 100:
-								has_100 = true
+						# Task 21：确定性图第一行 = 上边界墙 +8（_Build_LogOdds_Map）
+						var has_wall_log := false
+						for i in range(256):
+							if r.data.cells[i] == 8:
+								has_wall_log = true
 								break
-						_map_ok = has_100
-						print("[TEST] map_full ok: ", r.data.cells.size(), " cells, 100-encoding=", has_100)
+						_map_ok = has_wall_log
+						print("[TEST] map_full ok: ", r.data.cells.size(), " cells, log-odds wall(top)=", has_wall_log)
+				ProtocolDef.MSGID_MAP_DELTA:
+					_map_delta_count += 1
+					if _map_delta_count <= 3:
+						var ds: Array = r.data.voxels
+						var max_d := 0
+						for v in ds:
+							var d: int = v.get("delta", 0)
+							max_d = maxi(max_d, absi(d))
+						print("[TEST] map_delta #", _map_delta_count, ": ", ds.size(), " entries, max|Δ|=", max_d)
 				_:
 					print("[TEST] unexpected msgid: ", r.msgid)
 
@@ -154,14 +169,15 @@ func _On_Pose(data: Dictionary) -> void:
 func _Finish() -> void:
 	var ok := true
 	if not _got_hello: _failures.append("no hello"); ok = false
-	if not _map_ok: _failures.append("no map_full(100-encoding)"); ok = false
+	if not _map_ok: _failures.append("no map_full(log-odds 8-encoding)"); ok = false
+	if _map_delta_count == 0: _failures.append("no map_delta received (1Hz)"); ok = false
 	if not _manual_moving: _failures.append("manual forward not moving"); ok = false
 	if not _task_running: _failures.append("task_set not executing"); ok = false
 	if not _arrived_1: _failures.append("mission1 (10,10) not reached"); ok = false
 	if not _arrived_2: _failures.append("mission2 (12,12) not reached (queue order?)"); ok = false
 	if not _cancel_stopped: _failures.append("cancel not stopping"); ok = false
 	print("=== E2E result: ", "PASS" if ok else "FAIL", " ===")
-	print("hello=", _got_hello, " map=", _map_ok, " manual_move=", _manual_moving,
+	print("hello=", _got_hello, " map=", _map_ok, " delta=", _map_delta_count, " manual_move=", _manual_moving,
 		" task=", _task_running, " m1=", _arrived_1, " m2=", _arrived_2,
 		" cancel_stop=", _cancel_stopped, " poses=", _pose_count)
 	if not _failures.is_empty():

@@ -1,5 +1,5 @@
 ## Presented by KeJi
-## Date ： 2026-08-07
+## Date ： 2026-08-11
 ##
 ## MessageParser — 上行消息解析器（小车 → PC）
 ## 纯静态方法，无状态。
@@ -38,7 +38,7 @@ static func parse_json(text: String) -> Dictionary:
 ## data 按消息类型填充：
 ##   MSGID_POSE     → { time_boot_ms, x, y, vx, vy, yaw }
 ##   MSGID_MAP_FULL → { chunk_x, chunk_y, cells, width, height, resolution }
-##   MSGID_MAP_DELTA→ { voxels: [{gx, gy, state}] }
+##   MSGID_MAP_DELTA→ { voxels: [{gx, gy, delta}] }（delta 为 i8 差分，累加式）
 static func parse_orion_frame(pkt: PackedByteArray) -> Dictionary:
 	var frame := OrionFrame.Decode_Frame(pkt)
 	if not frame.ok:

@@ -1,8 +1,9 @@
 extends Node
-## Present by KeJi
-## Date: 2026-07-11
+## Presented by KeJi
+## Date ： 2026-08-11
 ##
 ## MapData2D — 2D 地图数据节点，Chunk 分块存储
+## Task 21：存储语义 = log-odds i8（u8 位模式存储 / i8 有符号解释，clamp ±8）
 ## 挂在 Main 下，unique_name_in_owner，通过 %MapData2D 全局访问
 
 const CHUNK_SIZE := 256
@@ -19,15 +20,16 @@ func _ready() -> void:
 # ─── 全局入口 ─────────────────────────────────────────────────
 
 func set_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
-	# DEBUG
-	var c0 := 0; var c100 := 0; var c255 := 0
+	# 防御：越界字节 clamp 到 [−8, +8]（车端正常只发 [−8, 8]）
+	var out := PackedByteArray()
+	out.resize(cells.size())
 	for i in range(cells.size()):
-		match cells[i]:
-			0: c0 += 1
-			100: c100 += 1
-			255: c255 += 1
-	print("[MapData2D] set_full: chunk(%d,%d) cells=%d [0:%d 100:%d 255:%d]" % [chunk_x, chunk_y, cells.size(), c0, c100, c255])
-	set_chunk_full(chunk_x, chunk_y, cells)
+		var v := ChunkData2D.to_i8(cells[i])
+		out[i] = ChunkData2D.to_u8(clampi(v, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP))
+	# DEBUG
+	var c := _count_states(out)
+	print("[MapData2D] set_full: chunk(%d,%d) cells=%d [free:%d occupied:%d unknown:%d]" % [chunk_x, chunk_y, out.size(), c[0], c[1], c[2]])
+	set_chunk_full(chunk_x, chunk_y, out)
 
 
 func set_delta(voxels: Array) -> void:
@@ -48,20 +50,8 @@ func _group_by_chunk(voxels: Array) -> Dictionary:
 			groups[coord] = []
 		var lx: int = gx - cx * CHUNK_SIZE
 		var ly: int = gy - cy * CHUNK_SIZE
-		groups[coord].append({"lx": lx, "ly": ly, "state": v.get("state", 0)})
+		groups[coord].append({"lx": lx, "ly": ly, "delta": v.get("delta", 0)})
 	return groups
-
-
-func _dict_to_packed(updates: Array, coord: Vector2i) -> PackedByteArray:
-	var chunk := _get_or_create_chunk(coord.x, coord.y)
-	var cells := chunk.cells
-	for u in updates:
-		var lx: int = u.get("lx", 0)
-		var ly: int = u.get("ly", 0)
-		var idx: int = ly * CHUNK_SIZE + lx
-		if idx >= 0 and idx < cells.size():
-			cells[idx] = u.get("state", 0)
-	return cells
 
 
 # ─── Chunk 级操作 ─────────────────────────────────────────────
@@ -73,17 +63,20 @@ func set_chunk_full(chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 	EventBus.chunk_updated.emit(chunk_x, chunk_y)
 
 
+## DELTA 累加式更新：本地表 += Δ，先加后 clamp ±8（车端聚合不预 clamp，Δ 可超 ±8）
 func set_chunk_delta(chunk_x: int, chunk_y: int, updates: Array) -> void:
 	var chunk := _get_or_create_chunk(chunk_x, chunk_y)
 	var changed: Array = []
 	for u in updates:
 		var lx: int = u.get("lx", 0)
 		var ly: int = u.get("ly", 0)
-		var state: int = u.get("state", 0)
+		var delta: int = u.get("delta", 0)
 		var idx: int = ly * CHUNK_SIZE + lx
 		if idx >= 0 and idx < chunk.cells.size():
-			chunk.cells[idx] = state
-			changed.append({"gx": chunk_x * CHUNK_SIZE + lx, "gy": chunk_y * CHUNK_SIZE + ly, "state": state})
+			var old := ChunkData2D.to_i8(chunk.cells[idx])
+			var new := clampi(old + delta, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP)
+			chunk.cells[idx] = ChunkData2D.to_u8(new)
+			changed.append({"gx": chunk_x * CHUNK_SIZE + lx, "gy": chunk_y * CHUNK_SIZE + ly, "log_odds": new})
 	print("[MapData2D] set_delta: chunk(%d,%d) changed=%d cells" % [chunk_x, chunk_y, changed.size()])
 	# _save_chunk(chunk_x, chunk_y, chunk)
 	EventBus.cells_changed.emit(changed)
@@ -91,6 +84,7 @@ func set_chunk_delta(chunk_x: int, chunk_y: int, updates: Array) -> void:
 
 # ─── 查询 ─────────────────────────────────────────────────────
 
+## 返回该格 log-odds i8（−8~+8）。⚠️ 语义已变更（原三态 0/100/255），已核实当前无外部调用者。
 func get_cell(gx: int, gy: int) -> int:
 	var cx: int = floori(gx / CHUNK_SIZE)
 	var cy: int = floori(gy / CHUNK_SIZE)
@@ -99,7 +93,7 @@ func get_cell(gx: int, gy: int) -> int:
 		return 0
 	var lx: int = gx - cx * CHUNK_SIZE
 	var ly: int = gy - cy * CHUNK_SIZE
-	return chunk.cells[ly * CHUNK_SIZE + lx]
+	return ChunkData2D.to_i8(chunk.cells[ly * CHUNK_SIZE + lx])
 
 
 func get_chunk_cells(chunk_x: int, chunk_y: int) -> PackedByteArray:
@@ -138,6 +132,18 @@ func _get_or_create_chunk(chunk_x: int, chunk_y: int) -> ChunkData2D:
 		chunk.cells.resize(CHUNK_SIZE * CHUNK_SIZE)
 		_chunks[key] = chunk
 	return _chunks[key]
+
+
+## DEBUG：log-odds → 阈值派生三态计数，返回 [free, occupied, unknown]
+func _count_states(cells: PackedByteArray) -> Array:
+	var c := [0, 0, 0]
+	for i in range(cells.size()):
+		var s := ChunkData2D.to_state(ChunkData2D.to_i8(cells[i]))
+		match s:
+			ProtocolDef.CELL_FREE: c[0] += 1
+			ProtocolDef.CELL_OCCUPIED: c[1] += 1
+			_: c[2] += 1
+	return c
 
 
 func _save_chunk(chunk_x: int, chunk_y: int, chunk: ChunkData2D) -> void:

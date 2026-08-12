@@ -1,15 +1,15 @@
 ## Presented by KeJi
-## Date ： 2026-08-07
+## Date ： 2026-08-11
 ##
 ## OrionMessages — Orion 协议 5 种消息 payload 编解码
 ## 规范文档：docs/orion_protocol.md
 ## 全部大端（使用 OrionFrame 的 Read_*/Write_* helper，Godot 原生 API 为小端）。
-## 地图状态编码：0=free / 100=occupied / 255=unknown（与内部存储统一，零映射直传）。
+## Task 21：地图数据语义 = log-odds i8（−8~+8，u8 位模式直传）；三态由显示层按阈值 ±6 派生。
 ##
 ## 消息清单：
 ##   msgid 1 ORION_POSE          33B        (u32 time_boot_ms + 5×f32 + valid u8 + sub_gx i32 + sub_gy i32)
-##   msgid 2 ORION_MAP_FULL      20B 头 + data
-##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry
+##   msgid 2 ORION_MAP_FULL      20B 头 + data（log-odds i8，−8~+8）
+##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry（delta i8 差分，累加式）
 ##   msgid 4 ORION_MANUAL_CONTROL 3B        (u8 action + i16 param)
 ##   msgid 5 ORION_TASK_SET      1B + 9B/mission
 ## 下行命令组装入口：Build_Cmd（cmd_send 的 Dictionary → 完整帧）
@@ -108,12 +108,13 @@ static func Encode_Map_Delta(time_boot_ms: int, entries: Array) -> PackedByteArr
 		var e = entries[i]
 		OrionFrame.Write_S32_BE(buf, off, e.get("gx", 0))
 		OrionFrame.Write_S32_BE(buf, off + 4, e.get("gy", 0))
-		buf[off + 8] = e.get("state", ProtocolDef.CELL_FREE)
+		var delta: int = clampi(e.get("delta", 0), -127, 127)  # 防御：i8 范围
+		buf[off + 8] = delta & 0xFF                             # i8 → u8 位模式（−8 → 0xF8）
 		off += 9
 	return buf
 
 
-## 返回: { ok, time_boot_ms, count, entries: Array[{gx, gy, state}], error }
+## 返回: { ok, time_boot_ms, count, entries: Array[{gx, gy, delta}], error }（delta 为 i8 差分值）
 static func Decode_Map_Delta(payload: PackedByteArray) -> Dictionary:
 	if payload.size() < 6:
 		return _Fail("map_delta payload too small: %d" % payload.size())
@@ -123,10 +124,11 @@ static func Decode_Map_Delta(payload: PackedByteArray) -> Dictionary:
 	var entries: Array = []
 	var off := 6
 	for i in range(count):
+		var b: int = payload[off + 8]
 		entries.append({
 			"gx": OrionFrame.Read_S32_BE(payload, off),
 			"gy": OrionFrame.Read_S32_BE(payload, off + 4),
-			"state": payload[off + 8],
+			"delta": b if b <= 127 else b - 256,   # u8 → i8 有符号解释（248 → −8）
 		})
 		off += 9
 	return {"ok": true, "time_boot_ms": OrionFrame.Read_U32_BE(payload, 0), "count": count, "entries": entries, "error": ""}

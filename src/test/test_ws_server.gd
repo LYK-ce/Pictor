@@ -1,12 +1,14 @@
 ## Presented by KeJi
-## Date ： 2026-08-07
+## Date ： 2026-08-11
 ##
 ## TestWSServer — 多车测试用 WebSocket Server（Robot Controller 模拟）
 ## Orion 统一协议的小车侧参考实现（GDScript）：
-## - 上行：hello(JSON 过渡期) / pose(ORION_POSE) / map_full(ORION_MAP_FULL)
+## - 上行：hello(JSON 过渡期) / pose(ORION_POSE) / map_full(ORION_MAP_FULL, log-odds) / map_delta(ORION_MAP_DELTA, 1Hz 聚合)
 ## - 下行：manual_control(ORION_MANUAL_CONTROL) / task_set(ORION_TASK_SET)
 ## Manual 模式：接收 manual 命令直接控制
 ## Auto 模式：接收 task_set 任务队列，模拟 Turning→Moving 闭环（整体替换语义）
+## Task 21：地图走 log-odds 语义（确定性图：边界 +8 / 中央 16×16 −8 / 其余 0），
+##          每 5 帧（1s）聚合真实差分广播 MAP_DELTA（对齐车端 robot.rs 语义）
 ## 使用时手动挂载到场景中，每车一个实例
 
 extends Node
@@ -20,7 +22,7 @@ extends Node
 ## 是否在 hello 之后发送全量地图
 @export var send_map := false
 
-## 地图资源引用，send_map 为 true 时使用（cells 编码 0/100/255）
+## 地图资源引用（保留兼容；实际发送用 _Build_LogOdds_Map 确定性图，Task 21）
 @export var map_chunk: ChunkData2D
 
 const CHUNK_SIZE := 256
@@ -57,6 +59,11 @@ var _goal_x := 0.0
 var _goal_y := 0.0
 
 var _timer := 0.0
+
+# 地图模拟（Task 21：log-odds + 1Hz 聚合 delta）
+var _log_map := PackedByteArray()      # 本车 own 表（u8 位模式，65536）
+var _pending: Dictionary = {}         # {idx: 窗口净变化}（不预 clamp，同车端）
+var _delta_frame := 0
 
 
 func _ready() -> void:
@@ -95,6 +102,8 @@ func _process(delta: float) -> void:
 				return
 			_Read_Incoming()
 			_Update_Movement(delta)
+			if send_map and _log_map.size() == CHUNK_SIZE * CHUNK_SIZE:
+				_Tick_Map_Delta()
 			_timer += delta
 			if _timer >= 0.1:  # 10Hz
 				_timer = 0.0
@@ -181,10 +190,8 @@ func _Send_Hello() -> void:
 
 
 func _Send_Map() -> void:
-	if not map_chunk:
-		printerr("[" + vehicle_id + "] map_chunk is null")
-		return
-	var cells: PackedByteArray = map_chunk.cells  # 已统一为 0/100/255
+	var cells: PackedByteArray = _Build_LogOdds_Map()
+	_log_map = cells.duplicate()  # 初始化 own 表（DELTA 聚合基准）
 
 	var payload := OrionMessages.Encode_Map_Full(
 		Time.get_ticks_msec() & 0xFFFFFFFF,
@@ -196,6 +203,65 @@ func _Send_Map() -> void:
 	var frame := OrionFrame.Encode_Frame(ProtocolDef.MSGID_MAP_FULL, PackedByteArray(), ProtocolDef.COMPID_VEHICLE, payload)
 
 	print("[" + vehicle_id + "] sending map_full chunk(0,0), ", frame.size(), " bytes")
+	_Send_Binary(frame)
+
+
+## 确定性 log-odds 图：边界一圈 +8（墙）/ 中央 16×16 块 −8（空地）/ 其余 0（未知）
+func _Build_LogOdds_Map() -> PackedByteArray:
+	var cells := PackedByteArray()
+	cells.resize(CHUNK_SIZE * CHUNK_SIZE)
+	for gx in range(CHUNK_SIZE):
+		cells[gx] = 8
+		cells[(CHUNK_SIZE - 1) * CHUNK_SIZE + gx] = 8
+	for gy in range(CHUNK_SIZE):
+		cells[gy * CHUNK_SIZE] = 8
+		cells[gy * CHUNK_SIZE + CHUNK_SIZE - 1] = 8
+	for gy in range(120, 136):
+		for gx in range(120, 136):
+			cells[gy * CHUNK_SIZE + gx] = ChunkData2D.to_u8(-8)
+	return cells
+
+
+## 每帧驱动地图变化（对齐车端：own 表 saturating 更新，真实差分进 pending，不预 clamp）
+## 每 5 帧（1s）聚合发送一次 MAP_DELTA；覆盖正 Δ / 负 Δ / 窗口净变化超 ±8（+15）场景
+func _Tick_Map_Delta() -> void:
+	_delta_frame += 1
+	# 区域1：中央空地内 (130,130) 每帧 −1（掠过）
+	_Apply_Delta_At(130, 130, -1)
+	# 区域2：中央块右侧 (140,130) 每帧 +3（命中，从 0 冲 +8）
+	_Apply_Delta_At(140, 130, 3)
+	# 区域3：中央块内 (125,125) 每帧 +3（命中，从 −8 起 5 帧净 +15 → 单条 Δ 超 ±8）
+	_Apply_Delta_At(125, 125, 3)
+	if _delta_frame % 5 == 0:
+		_Flush_Pending_Delta()
+
+
+func _Apply_Delta_At(gx: int, gy: int, d: int) -> void:
+	var idx := gy * CHUNK_SIZE + gx
+	if idx < 0 or idx >= _log_map.size():
+		return
+	var old := ChunkData2D.to_i8(_log_map[idx])
+	var new := clampi(old + d, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP)
+	var real := new - old  # 真实差分（clamp 后）
+	_log_map[idx] = ChunkData2D.to_u8(new)
+	if real != 0:
+		_pending[idx] = _pending.get(idx, 0) + real
+
+
+func _Flush_Pending_Delta() -> void:
+	if _pending.is_empty():
+		return
+	var entries: Array = []
+	for idx in _pending:
+		var d: int = _pending[idx]
+		if d != 0:  # 净 0 不发（同车端 drain 语义）
+			entries.append({"gx": idx % CHUNK_SIZE, "gy": idx / CHUNK_SIZE, "delta": d})
+	_pending.clear()
+	if entries.is_empty():
+		return
+	var payload := OrionMessages.Encode_Map_Delta(Time.get_ticks_msec() & 0xFFFFFFFF, entries)
+	var frame := OrionFrame.Encode_Frame(ProtocolDef.MSGID_MAP_DELTA, PackedByteArray(), ProtocolDef.COMPID_VEHICLE, payload)
+	print("[" + vehicle_id + "] sending map_delta ", entries.size(), " entries (1Hz)")
 	_Send_Binary(frame)
 
 

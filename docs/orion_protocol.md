@@ -2,6 +2,8 @@
 
 > 创建日期：2026-08-07
 > 状态：设计中（消息字段以本文件为准，后续讨论补充其余章节）
+>
+> **Task 21 修订（2026-08-11）**：地图消息数据语义从三态（0/100/255）升级为 **log-odds i8（−8~+8）**——msgid=2 的 data 为 own 表 log-odds 字节；msgid=3 的 entry 为差分 Δ（累加式）。与车端**同批发布，无兼容过渡期**。
 
 ---
 
@@ -110,7 +112,7 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 |---|---|---|---|
 | 1 | `ORION_POSE` | 车 → 集群/终端 | 10Hz 广播 |
 | 2 | `ORION_MAP_FULL` | 车 → 集群/终端 | 连接建立时 / 按需 |
-| 3 | `ORION_MAP_DELTA` | 车 → 集群/终端 | 地图有变化时（≤5Hz） |
+| 3 | `ORION_MAP_DELTA` | 车 → 集群/终端 | 1s 一次（车端 5 帧聚合，Δ≠0 才发） |
 | 4 | `ORION_MANUAL_CONTROL` | 终端/集群 → 车 | 事件驱动 |
 | 5 | `ORION_TASK_SET` | 终端/集群 → 车 | 事件驱动 |
 
@@ -165,7 +167,7 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 | `width` | uint16 | 栅格宽（cell 数），当前 256 |
 | `height` | uint16 | 栅格高（cell 数），当前 256 |
 | `resolution` | float | 分辨率（米/cell），当前 0.5 |
-| `data` | int8[width×height] | 每 cell 一字节：**0 = free, 100 = occupied, 255 = unknown**（与内部一致） |
+| `data` | int8[width×height] | 每 cell 一字节：**log-odds i8（−8~+8，u8 位模式直传）**；显示层按阈值 >+6 Occupied / <−6 Free / 其余 Unknown 派生三态 |
 
 **payload 布局**（大端）：
 
@@ -181,9 +183,9 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 **总大小 = 20 + width×height 字节**（256×256 时 = 65556 字节）
 
-状态编码：内部三态已统一为 **0/100/255**（`CellState` 枚举 `[repr(i8)]`，`Unknown = -1`，u8 线上为 255），full 与 delta 编码一致，**零映射直传**。
+状态编码（Task 21）：数据源 = 车端 **own 表** `log_odds_bytes()`（本车观测累积贡献，i8 −8~+8），逐字节 `as u8` 位模式直传（−8 → `0xF8`）。存储一份 log-odds，三态读时派生（阈值**严格**：`> +6` Occupied、`< −6` Free、恰好 ±6 与 0 为 Unknown）。
 
-发送时机：控制终端/其他车连接建立后发送一次；后续按需重发（协议层不做主动周期推送）。
+发送时机：连接建立后（hello 之后）发送**一次**；后续按需重发（协议层不做主动周期推送）。⚠️ 与车端**同批升级**：msgid=2 语义替换无兼容过渡期，旧三态数据按 log-odds 解释会得到乱图。
 
 ### 3.3 ORION_MAP_DELTA（msgid 3）— 地图增量
 
@@ -201,7 +203,7 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 |---|---|---|
 | `gx` | int32 | 全局网格坐标 X（绝对坐标，无需 chunk） |
 | `gy` | int32 | 全局网格坐标 Y（绝对坐标，无需 chunk） |
-| `state` | int8 | 0 = free, 100 = occupied, 255 = unknown（与内部一致，直传） |
+| `delta` | int8 | **差分 Δ = new_log − old_log**（i8，如 +3/−1；接收方 `new = clamp(old + Δ, −8, +8)`，**先加后 clamp**——车端 5 帧聚合不预 clamp，单条 Δ 可超 ±8；字节 >127 减 256 得有符号值） |
 
 **payload 布局**（大端）：
 
@@ -211,12 +213,12 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 | 4 | `count` | u16 |
 | 6 | `entries[count]` | 每项 9 字节（见下） |
 
-`entries[i]` 布局（9 字节）：`gx` i32 [0..4) + `gy` i32 [4..8) + `state` i8 [8..9)
+`entries[i]` 布局（9 字节）：`gx` i32 [0..4) + `gy` i32 [4..8) + `delta` i8 [8..9)
 
 **总大小 = 6 + 9×count 字节**
 
-来源映射：`slam::update` 返回的 `Vec<Delta{gx,gy,state}>`。
-频率：有变化时发送（沿用 `slam_task` 200ms 节奏，≤5Hz）。
+来源映射（Task 21）：`slam::update` 返回的 `Vec<Delta{gx, gy, delta}>`（own 表差分），5 帧按格聚合净变化（真实差分，净 0 不发）。
+频率：1s 一次（`slam_task` 200ms/帧，计数器模 5；WS 与 gossip 两条链路一致）。
 
 ### 3.4 ORION_MANUAL_CONTROL（msgid 4）— 手动命令 + 模式切换
 
