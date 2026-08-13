@@ -35,7 +35,7 @@ func _on_panel_clicked(vehicle_id: String, ctrl_held: bool) -> void:
 	if vehicle_id == app_state.manual_target:
 		_panels[vehicle_id].set_manual_checked(false)
 		app_state.manual_target = ""
-		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
+		EventBus.cmd_send.emit([vehicle_id] as Array[String], MessageBuilder.build_mode_switch_to_auto())
 		app_state.selected_ids.append(vehicle_id)
 		_update_selection()
 		return
@@ -55,18 +55,18 @@ func _on_mode_toggled(vehicle_id: String, to_manual: bool) -> void:
 		if not app_state.manual_target.is_empty() and app_state.manual_target != vehicle_id:
 			var old := app_state.manual_target
 			_panels[old].set_manual_checked(false)
-			EventBus.cmd_send.emit(old, MessageBuilder.build_mode_switch_to_auto())
+			EventBus.cmd_send.emit([old] as Array[String], MessageBuilder.build_mode_switch_to_auto())
 
 		# 从 auto 队列移除
 		app_state.selected_ids.erase(vehicle_id)
 
 		# 设新手动车
 		app_state.manual_target = vehicle_id
-		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_manual())
+		EventBus.cmd_send.emit([vehicle_id] as Array[String], MessageBuilder.build_mode_switch_to_manual())
 	else:
 		# —— 切换为 Auto ——
 		app_state.manual_target = ""
-		EventBus.cmd_send.emit(vehicle_id, MessageBuilder.build_mode_switch_to_auto())
+		EventBus.cmd_send.emit([vehicle_id] as Array[String], MessageBuilder.build_mode_switch_to_auto())
 		# 不加入 selected_ids，变未选中
 
 	_update_selection()

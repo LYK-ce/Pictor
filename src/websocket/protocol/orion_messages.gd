@@ -11,7 +11,7 @@
 ##   msgid 2 ORION_MAP_FULL      20B 头 + data（log-odds i8，−8~+8）
 ##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry（delta i8 差分，累加式）
 ##   msgid 4 ORION_MANUAL_CONTROL 3B        (u8 action + i16 param)
-##   msgid 5 ORION_TASK_SET      1B + 9B/mission
+##   msgid 5 ORION_TASK_SET      2B + members[](len u8 + 变长) + 9B/mission（Task 22 群发扩展）
 ## 下行命令组装入口：Build_Cmd（cmd_send 的 Dictionary → 完整帧）
 
 class_name OrionMessages
@@ -151,47 +151,79 @@ static func Decode_Manual_Control(payload: PackedByteArray) -> Dictionary:
 	return {"ok": true, "action": payload[0], "param": OrionFrame.Read_S16_BE(payload, 1), "error": ""}
 
 
-# ─── ORION_TASK_SET (msgid 5) — 1B + 9B/mission ───────────────
+# ─── ORION_TASK_SET (msgid 5) — 群发扩展（Task 22 / Orion task_14）─────
+## 布局：mission_count u8 + member_count u8 + members[](len u8 + peer_id 变长) + missions[](9B/条)
+## 语义：member_count==0 → 取消全部；==1 → 单车任务；>1 → 群发（车端散布分配）
 
-static func Encode_Task_Set(missions: Array) -> PackedByteArray:
-	var count := missions.size()
-	if count > 255:
-		printerr("[OrionMessages] task_set missions exceed u8 max: ", count, " — truncated")
-		count = 255
+## members: Array[PackedByteArray]（原始 peer_id 字节，未编码 hex）
+static func Encode_Task_Set(missions: Array, members: Array = []) -> PackedByteArray:
+	var m_count := missions.size()
+	if m_count > 255:
+		printerr("[OrionMessages] task_set missions exceed u8 max: ", m_count, " — truncated")
+		m_count = 255
+	var mem_count := members.size()
+	if mem_count > 255:
+		printerr("[OrionMessages] task_set members exceed u8 max: ", mem_count, " — truncated")
+		mem_count = 255
+	# 预计算 members 区域大小（len u8 + bytes，单成员 >255B 截断）
+	var mem_size := 0
+	for i in range(mem_count):
+		mem_size += 1 + mini((members[i] as PackedByteArray).size(), 255)
 	var buf := PackedByteArray()
-	buf.resize(1 + 9 * count)
-	buf[0] = count
-	var off := 1
-	for i in range(count):
-		var m = missions[i]
+	buf.resize(2 + mem_size + 9 * m_count)
+	buf[0] = m_count
+	buf[1] = mem_count
+	var off := 2
+	for i in range(mem_count):
+		var m: PackedByteArray = members[i]
+		var n := mini(m.size(), 255)
+		buf[off] = n
+		off += 1
+		for j in range(n):
+			buf[off + j] = m[j]
+		off += n
+	for i in range(m_count):
+		var mi = missions[i]
 		# mission type 归一化：LLM 可能输出字符串 "goto"（防御性）
-		var mt = m.get("type", ProtocolDef.MISSION_TYPE_GOTO)
+		var mt = mi.get("type", ProtocolDef.MISSION_TYPE_GOTO)
 		if mt is String:
 			mt = ProtocolDef.MISSION_TYPE_GOTO
 		buf[off] = int(mt)
-		OrionFrame.Write_F32_BE(buf, off + 1, m.get("x", 0.0))
-		OrionFrame.Write_F32_BE(buf, off + 5, m.get("y", 0.0))
+		OrionFrame.Write_F32_BE(buf, off + 1, mi.get("x", 0.0))
+		OrionFrame.Write_F32_BE(buf, off + 5, mi.get("y", 0.0))
 		off += 9
 	return buf
 
 
-## 返回: { ok, count, missions: Array[{type, x, y}], error }
+## 返回: { ok, mission_count, member_count, members: Array[PackedByteArray], missions: Array[{type, x, y}], error }
+## 校验：payload < 2 → fail；members 越界 → fail；missions 严格 9×mission_count（防恶意帧/尾随垃圾）
 static func Decode_Task_Set(payload: PackedByteArray) -> Dictionary:
-	if payload.size() < 1:
-		return _Fail("task_set payload too small")
-	var count := payload[0]
-	if payload.size() < 1 + 9 * count:
-		return _Fail("task_set missions truncated: need %d have %d" % [1 + 9 * count, payload.size()])
+	if payload.size() < 2:
+		return _Fail("task_set payload too small: %d" % payload.size())
+	var m_count := payload[0]
+	var mem_count := payload[1]
+	var off := 2
+	var members: Array = []
+	for i in range(mem_count):
+		if off >= payload.size():
+			return _Fail("task_set members truncated at %d" % i)
+		var len := payload[off]
+		off += 1
+		if off + len > payload.size():
+			return _Fail("task_set member %d out of bounds: need %d have %d" % [i, off + len, payload.size()])
+		members.append(payload.slice(off, off + len))
+		off += len
+	if payload.size() != off + 9 * m_count:
+		return _Fail("task_set missions size mismatch: need %d have %d" % [off + 9 * m_count, payload.size()])
 	var missions: Array = []
-	var off := 1
-	for i in range(count):
+	for i in range(m_count):
 		missions.append({
 			"type": payload[off],
 			"x": OrionFrame.Read_F32_BE(payload, off + 1),
 			"y": OrionFrame.Read_F32_BE(payload, off + 5),
 		})
 		off += 9
-	return {"ok": true, "count": count, "missions": missions, "error": ""}
+	return {"ok": true, "mission_count": m_count, "member_count": mem_count, "members": members, "missions": missions, "error": ""}
 
 
 # ─── 下行命令组装（cmd_send 的 Dictionary → 完整帧）────────────
@@ -216,7 +248,7 @@ static func Build_Cmd(cmd: Dictionary) -> PackedByteArray:
 		ProtocolDef.MSGID_MANUAL_CONTROL:
 			payload = Encode_Manual_Control(cmd.get("action", ProtocolDef.ACTION_STOP), cmd.get("param", 0))
 		ProtocolDef.MSGID_TASK_SET:
-			payload = Encode_Task_Set(cmd.get("missions", []))
+			payload = Encode_Task_Set(cmd.get("missions", []), cmd.get("members", []))
 		_:
 			printerr("[OrionMessages] unknown cmd msgid: ", msgid)
 			return PackedByteArray()

@@ -55,7 +55,14 @@
 Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**（连接机制 + `hello` 握手消息，`hello` 仅发送一次，成本可忽略）。
 
 - **WS 消息 payload 已迁移为 ORION 帧**（2026-08-07 实施）：pose / map_delta / map_full / 命令全部为二进制 ORION 帧，旧 JSON 协议（`cmd/action` 三层命令、`type:pose` 遥测）**已移除**
-- `hello` 为唯一保留的 JSON 消息（连接握手）
+- `hello` 为唯一保留的 JSON 消息（连接握手），字段：
+
+  | 字段 | 类型 | 说明 |
+  |---|---|---|
+  | `type` | string | 固定 `"hello"` |
+  | `vehicle_id` | string | 车名（= peer_name） |
+  | `address` | string | 本车 WS 地址 |
+  | `peer_id` | string | 本车 peer_id 的 **hex 编码**（38B Ed25519 → 76 hex 字符，与帧头 sysid 字节一致）；Task 22：终端维护"在线车 → peer_id"表，群发 TASK_SET 构造 members 的身份来源 |
 - **`Tool/robot_control.html` 已废弃**（旧 JSON 协议，不再维护；主力地面站为 Pictor）
 - Pictor 完成 libp2p 接入后，WS 链路与 `hello` 一并退役
 
@@ -261,13 +268,18 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 映射：`ORION_MANUAL_CONTROL` → `Command::Manual(ManualCmd::*)` / `Command::Mode(ModeCmd::*)`。
 
 ### 3.5 ORION_TASK_SET（msgid 5）— 任务队列替换
+### 3.5 ORION_TASK_SET（msgid 5）— 任务队列替换 / 群发
 
 **整体替换语义**（非追加）：收到即丢弃当前任务队列（含正在执行的任务，立即中断），装载新队列从头执行。
 
+**群发扩展（Task 22 / Orion task_14，2026-08-12）**：payload 新增成员段，支持单车/群发/取消三分支：
+
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `count` | uint8 | 任务数；**0 = 取消全部任务（停车待命）**；**协议上限 255 任务/帧** |
-| `missions` | 结构数组 | 每项 9 字节（见下） |
+| `mission_count` | uint8 | 任务数；协议上限 255 |
+| `member_count` | uint8 | 成员数；**0 = 取消全部任务（停车待命）** |
+| `members[]` | 结构数组 | 每项 = `len` u8 + `peer_id` 变长字节（单成员 ≤255B，通常 38B） |
+| `missions[]` | 结构数组 | 每项 9 字节（见下） |
 
 `missions[i]`：
 
@@ -281,17 +293,23 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 | 偏移 | 字段 | 类型 |
 |---|---|---|
-| 0 | `count` | u8 |
-| 1 | `missions[count]` | 每项 9 字节（见下） |
+| 0 | `mission_count` | u8 |
+| 1 | `member_count` | u8 |
+| 2 | `members[member_count]` | 每项 = `len` u8 + 变长字节 |
+| ... | `missions[mission_count]` | 每项 9 字节 |
 
-`missions[i]` 布局（9 字节）：`type` u8 [0..1) + `x` f32 [1..5) + `y` f32 [5..9)
+`missions[i]` 布局（9 字节）：`type` u8 + `x` f32 + `y` f32
 
-**总大小 = 1 + 9×count 字节**
+**三分支语义**（2026-08-12 定稿）：
+- `member_count == 0` → **取消全部任务**（replace 空队列，老 count=0 取消语义）
+- `member_count == 1` → 单车任务（members 仅本车，目标点精确执行）
+- `member_count > 1` → 群发任务（取 missions 第一个 Goto 为目标点，每辆车按统一确定性算法散布分配）
 
-行为约束（2026-08-07 决策）：
+行为约束（2026-08-07 决策 + 2026-08-12 扩展）：
 - **替换**：新队列到达即替换旧队列，不合并、不追加
 - **立即中断**：正在执行的任务立即终止（`executor.reset()` + `stm32.stop()`），从新队列第一个任务开始
-- **空队列 = 取消**：`count = 0` 即取消全部任务，车停车待命
+- **空队列 + 空成员 = 取消**：`mission_count=0` 且 `member_count=0` 即取消全部任务，车停车待命
+- ⚠️ **同批升级**：字节格式变更，车端 + Pictor 同批上线，无过渡期（老 Pictor 旧帧 → 车端全拒）
 
 ---
 

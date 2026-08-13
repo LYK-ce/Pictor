@@ -16,6 +16,9 @@ extends Node
 ## 车辆标识，hello 包中发送
 @export var vehicle_id := "test"
 
+## 本车 peer_id（hello 中发送，hex；空 → 按 vehicle_id 自动派生确定性假值，多车互不相同）
+@export var peer_id := ""
+
 ## 监听端口
 @export var port := 9090
 
@@ -70,6 +73,7 @@ var _timer := 0.0
 var _log_map := PackedByteArray()      # 本车 own 表（u8 位模式，65536）
 var _merged_map := PackedByteArray()   # 本车 merged 表（阶段 2：终端返还 FULL 替换目标，own 保留）
 var _full_rx_count := 0                # 收到终端返还 FULL 的次数（e2e 时序判定）
+var _task_rx_count := 0                # 收到非空 TASK_SET 的次数（Task 22 群发 e2e 判定）
 var _pending: Dictionary = {}         # {idx: 窗口净变化}（不预 clamp，同车端）
 var _delta_frame := 0
 
@@ -192,10 +196,19 @@ func _Send_Hello() -> void:
 	var msg := JSON.stringify({
 		"type": "hello",
 		"vehicle_id": vehicle_id,
-		"address": "ws://127.0.0.1:%d" % port
+		"address": "ws://127.0.0.1:%d" % port,
+		"peer_id": _Get_Peer_Id(),
 	})
 	print("[" + vehicle_id + "] sending hello")
 	_Send(msg)
+
+
+## 群发 TASK_SET 成员匹配用 peer_id：显式配置优先，否则按 vehicle_id 派生确定性假值（76 hex，模拟 38B Ed25519）
+func _Get_Peer_Id() -> String:
+	if not peer_id.is_empty():
+		return peer_id
+	var h := vehicle_id.md5_text()  # 32 hex，确定性
+	return (h.repeat(3)).left(76)
 
 
 func _Send_Map() -> void:
@@ -318,7 +331,7 @@ func _Read_Incoming() -> void:
 			ProtocolDef.MSGID_MANUAL_CONTROL:
 				_Handle_Control(result.data.action, result.data.param)
 			ProtocolDef.MSGID_TASK_SET:
-				_Handle_Task_Set(result.data.missions)
+				_Handle_Task_Set(result.data)
 			_:
 				printerr("[" + vehicle_id + "] unhandled msgid: ", result.msgid)
 
@@ -377,12 +390,26 @@ func _Handle_Control(action: int, param: int) -> void:
 					printerr("[" + vehicle_id + "] unknown action: ", action)
 
 
-## TASK_SET 整体替换：丢弃当前队列（含正在执行的任务），从头执行新队列
-## 语义对齐 Rust robot.rs：Manual 模式下静默忽略 Auto 命令（车开机默认 AUTO）
-func _Handle_Task_Set(missions: Array) -> void:
+## TASK_SET 整体替换（Task 22：三分支 + 成员判断，对齐车端 protocol.rs）：
+## - member_count==0 → 取消全部（不检查成员）
+## - member_count>0 → 本车不在 members 中 → 忽略（群发语义）
+## - Manual 模式静默忽略 Auto 命令（车开机默认 AUTO）
+func _Handle_Task_Set(data: Dictionary) -> void:
 	if _op_mode != OpMode.AUTO:
 		print("[" + vehicle_id + "] ignore task_set: current mode is MANUAL")
 		return
+	var missions: Array = data.missions
+	var member_count: int = data.member_count
+	if member_count > 0:
+		var my_bytes := _Get_Peer_Id().hex_decode()
+		var is_member := false
+		for m in data.members:
+			if m == my_bytes:
+				is_member = true
+				break
+		if not is_member:
+			print("[" + vehicle_id + "] ignore task_set: not in members")
+			return
 	_vx = 0.0
 	_vy = 0.0
 	_turn_rate = 0.0
@@ -392,6 +419,7 @@ func _Handle_Task_Set(missions: Array) -> void:
 	if _task_queue.is_empty():
 		print("[" + vehicle_id + "] tasks cancelled (count=0), standby")
 		return
+	_task_rx_count += 1
 	print("[" + vehicle_id + "] task_set received: ", _task_queue.size(), " tasks")
 	_Start_Next_Task()
 
@@ -420,6 +448,10 @@ func get_own_cells() -> PackedByteArray:
 
 func get_merged_cells() -> PackedByteArray:
 	return _merged_map.duplicate()
+
+
+func get_task_rx_count() -> int:
+	return _task_rx_count
 
 
 func get_full_rx_count() -> int:

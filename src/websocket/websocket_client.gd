@@ -13,6 +13,7 @@ var _ws: WebSocketPeer = null
 var _state := State.DISCONNECTED
 var _url := ""
 var _vehicle_id := ""
+var _peer_id := ""   # Task 22：hello 携带的本车 peer_id（hex，群发 members 身份来源）
 var _identified := false
 var _reconnect_interval := 3.0
 var _reconnect_timer := 0.0
@@ -96,8 +97,9 @@ func _on_message(text: String) -> void:
 
 	if msg_type == ProtocolDef.MSG_HELLO:
 		_vehicle_id = data.get("vehicle_id", "")
+		_peer_id = data.get("peer_id", "")
 		_identified = true
-		print("[WS] identified as: ", _vehicle_id)
+		print("[WS] identified as: ", _vehicle_id, " peer_id=", _peer_id)
 		EventBus.vehicle_registered.emit(_vehicle_id, _url)
 		return
 
@@ -127,6 +129,7 @@ func _disconnect() -> void:
 	_reconnect_timer = _reconnect_interval
 	_identified = false
 	_vehicle_id = ""
+	_peer_id = ""
 	print("[WS] disconnected from ", _url)
 	disconnected.emit()
 
@@ -156,3 +159,7 @@ func get_url() -> String:
 
 func get_vehicle_id() -> String:
 	return _vehicle_id
+
+
+func get_peer_id() -> String:
+	return _peer_id

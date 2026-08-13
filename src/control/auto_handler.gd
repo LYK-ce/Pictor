@@ -52,10 +52,10 @@ func _on_cmds_generated(cmds: Array) -> void:
 		print("[AutoHandler] 未选中车辆，指令不下发")
 		return
 
+	# Task 22：对选中车群发（单条 TASK_SET，members 由 WebSocketManager 按 targets 填充）
 	var task_set := MessageBuilder.build_task_set(cmds)
-	for id: String in app_state.selected_ids:
-		EventBus.cmd_send.emit(id, task_set)
-		print("[LLM] → ", id, ": TASK_SET x", cmds.size())
+	EventBus.cmd_send.emit(app_state.selected_ids, task_set)
+	print("[LLM] → ", app_state.selected_ids, ": TASK_SET x", cmds.size())
 
 
 ## LLM 请求失败 → 仅日志
@@ -89,9 +89,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var tile := CoordUtils.game_to_tile(mouse_pos)
 	var real := CoordUtils.tile_to_real(tile.x, tile.y)
 
-	for id in app_state.selected_ids:
-		EventBus.cmd_send.emit(id,
-			MessageBuilder.build_auto_push_goto(real.x, real.y))
+	# Task 22：对选中车群发（单条 TASK_SET，members 由 WebSocketManager 按 targets 填充，车端自行散布）
+	EventBus.cmd_send.emit(app_state.selected_ids,
+		MessageBuilder.build_auto_push_goto(real.x, real.y))
 
 	# 通知高亮
 	EventBus.goto_issued.emit(real.x, real.y)

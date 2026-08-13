@@ -34,4 +34,4 @@ func _input(event: InputEvent) -> void:
 	var cmd := MessageBuilder.build_manual_stop()
 	if key_event.pressed:
 		cmd = MessageBuilder.build_manual_action(_KEY_MAP[key_event.keycode])
-	EventBus.cmd_send.emit(app_state.manual_target, cmd)
+	EventBus.cmd_send.emit([app_state.manual_target] as Array[String], cmd)

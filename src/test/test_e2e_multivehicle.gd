@@ -19,11 +19,14 @@ const TIMEOUT := 20.0
 @onready var car_b: Node = $CarB
 @onready var map_data: Node = $MapData2D
 
-enum Phase { CONNECT_A, WAIT_A, CONNECT_B, WAIT_B }
+enum Phase { CONNECT_A, WAIT_A, CONNECT_B, WAIT_B, GROUP, GROUP_WAIT, SINGLE, SINGLE_WAIT }
 
 var _phase := Phase.CONNECT_A
 var _phase_t := 0.0
 var _failures: Array[String] = []
+
+
+var _g: Dictionary = {}   # 群发/单车阶段的前置计数
 
 
 func _ready() -> void:
@@ -55,9 +58,48 @@ func _process(delta: float) -> void:
 		Phase.WAIT_B:
 			if car_b.get_full_rx_count() >= 1:
 				_Check_Phase_B()
-				_Finish()
+				_phase = Phase.GROUP
+				_phase_t = 0.0
+				print("[E2E-MV] map merge done → group task test")
 			elif _phase_t > TIMEOUT:
 				_Fail("B timeout waiting merged FULL")
+				_Finish()
+		Phase.GROUP:
+			# Task 22：群发 TASK_SET 给两车（members=[car_a, car_b]），两车都应收到
+			var before_a: int = car_a.get_task_rx_count()
+			var before_b: int = car_b.get_task_rx_count()
+			EventBus.cmd_send.emit(["car_a", "car_b"] as Array[String],
+				MessageBuilder.build_auto_push_goto(10.0, 10.0))
+			_phase = Phase.GROUP_WAIT
+			_phase_t = 0.0
+			_g = {"before_a": before_a, "before_b": before_b}
+		Phase.GROUP_WAIT:
+			if car_a.get_task_rx_count() > _g.before_a and car_b.get_task_rx_count() > _g.before_b:
+				print("[E2E-MV] group task received by both ✓")
+				_phase = Phase.SINGLE
+				_phase_t = 0.0
+			elif _phase_t > 5.0:
+				_Fail("group task not received by both: a=%d b=%d" % [car_a.get_task_rx_count(), car_b.get_task_rx_count()])
+				_Finish()
+		Phase.SINGLE:
+			# 单车任务（members=[car_a]）：car_a 收到，car_b 非成员忽略
+			var before_a: int = car_a.get_task_rx_count()
+			var before_b: int = car_b.get_task_rx_count()
+			EventBus.cmd_send.emit(["car_a"] as Array[String],
+				MessageBuilder.build_auto_push_goto(20.0, 20.0))
+			_phase = Phase.SINGLE_WAIT
+			_phase_t = 0.0
+			_g = {"before_a": before_a, "before_b": before_b}
+		Phase.SINGLE_WAIT:
+			if car_a.get_task_rx_count() > _g.before_a:
+				if car_b.get_task_rx_count() == _g.before_b:
+					print("[E2E-MV] single task: car_a only ✓ (car_b ignored as non-member)")
+					_Finish()
+				else:
+					_Fail("car_b received single-car task (should ignore): b=%d" % car_b.get_task_rx_count())
+					_Finish()
+			elif _phase_t > 5.0:
+				_Fail("single task not received by car_a")
 				_Finish()
 
 

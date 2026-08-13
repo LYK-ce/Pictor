@@ -152,24 +152,60 @@ func _test_manual_control() -> bool:
 
 
 func _test_task_set() -> bool:
+	# —— 单车（member_count=1）往返 ——
+	var members_single := [PackedByteArray([0x10, 0x20])]
+	var payload := OrionMessages.Encode_Task_Set(
+		[{"type": 0, "x": 12.5, "y": -3.25}], members_single)
+	# 布局: [m_count=1][mem_count=1][len=2][10 20][type][x 4B][y 4B] = 2+3+9 = 14B
+	if payload.size() != 14:
+		print("FAIL task_set size: ", payload.size()); return false
+	if payload[0] != 1 or payload[1] != 1:
+		print("FAIL task_set counts"); return false
+	if payload.slice(2, 5) != PackedByteArray([2, 0x10, 0x20]):
+		print("FAIL task_set member bytes: ", payload.slice(2, 5)); return false
+	var dec := OrionMessages.Decode_Task_Set(payload)
+	if not dec.ok or dec.mission_count != 1 or dec.member_count != 1 or dec.missions.size() != 1:
+		print("FAIL task_set decode: ", dec); return false
+	if dec.members.size() != 1 or dec.members[0] != PackedByteArray([0x10, 0x20]):
+		print("FAIL task_set members decode: ", dec.members); return false
+	var m0: Dictionary = dec.missions[0]
+	if m0.type != 0 or absf(m0.x - 12.5) > 0.0001 or absf(m0.y - (-3.25)) > 0.0001:
+		print("FAIL task_set m0: ", m0); return false
+
+	# —— 群发（member_count=2，3 条任务）往返 ——
+	var members_multi := [PackedByteArray([1, 2, 3]), PackedByteArray([0xAA])]
 	var missions := [
 		{"type": 0, "x": 12.5, "y": -3.25},
 		{"type": 0, "x": 0.0, "y": 99.99},
+		{"type": 0, "x": -1.0, "y": 1.0},
 	]
-	var payload := OrionMessages.Encode_Task_Set(missions)
-	if payload.size() != 1 + 18:
-		print("FAIL task_set size"); return false
-	if payload[0] != 2:
-		print("FAIL task_set count"); return false
-	var dec := OrionMessages.Decode_Task_Set(payload)
-	if not dec.ok or dec.count != 2 or dec.missions.size() != 2:
-		print("FAIL task_set decode: ", dec); return false
-	var m0: Dictionary = dec.missions[0]
-	var m1: Dictionary = dec.missions[1]
-	if m0.type != 0 or absf(m0.x - 12.5) > 0.0001 or absf(m0.y - (-3.25)) > 0.0001:
-		print("FAIL task_set m0: ", m0); return false
-	if m1.type != 0 or absf(m1.y - 99.99) > 0.0001:
-		print("FAIL task_set m1: ", m1); return false
+	var payload2 := OrionMessages.Encode_Task_Set(missions, members_multi)
+	var dec2 := OrionMessages.Decode_Task_Set(payload2)
+	if not dec2.ok or dec2.mission_count != 3 or dec2.member_count != 2:
+		print("FAIL task_set multi decode: ", dec2); return false
+	if dec2.members[0] != PackedByteArray([1, 2, 3]) or dec2.members[1] != PackedByteArray([0xAA]):
+		print("FAIL task_set multi members: ", dec2.members); return false
+	if absf(dec2.missions[1].y - 99.99) > 0.0001 or absf(dec2.missions[2].x - (-1.0)) > 0.0001:
+		print("FAIL task_set multi missions: ", dec2.missions); return false
+
+	# —— 取消帧（member_count=0, mission_count=0）往返 ——
+	var cancel := OrionMessages.Encode_Task_Set([], [])
+	if cancel.size() != 2 or cancel[0] != 0 or cancel[1] != 0:
+		print("FAIL task_set cancel layout"); return false
+	var dec_cancel := OrionMessages.Decode_Task_Set(cancel)
+	if not dec_cancel.ok or dec_cancel.mission_count != 0 or not dec_cancel.missions.is_empty():
+		print("FAIL task_set cancel decode: ", dec_cancel); return false
+
+	# —— 越界防御 ——
+	if OrionMessages.Decode_Task_Set(PackedByteArray([0])).ok:
+		print("FAIL task_set payload<2 accepted"); return false
+	var bad_member := PackedByteArray([0, 1, 10])  # member len=10 但无数据
+	if OrionMessages.Decode_Task_Set(bad_member).ok:
+		print("FAIL task_set member OOB accepted"); return false
+	var bad_missions := PackedByteArray([1, 0])    # mission_count=1 但仅 8B 任务数据（需 9）
+	bad_missions.resize(10)
+	if OrionMessages.Decode_Task_Set(bad_missions).ok:
+		print("FAIL task_set missions mismatch accepted"); return false
 	print("PASS task_set"); return true
 
 
@@ -190,7 +226,7 @@ func _test_build_cmd() -> bool:
 	var frame2 := OrionMessages.Build_Cmd(cancel)
 	var dec2 := OrionFrame.Decode_Frame(frame2)
 	var ts := OrionMessages.Decode_Task_Set(dec2.payload)
-	if ts.count != 0 or not ts.missions.is_empty():
+	if ts.mission_count != 0 or ts.member_count != 0 or not ts.missions.is_empty():
 		print("FAIL build_cmd cancel: ", ts); return false
 	print("PASS build_cmd"); return true
 
@@ -229,21 +265,21 @@ func _test_llm_missions() -> bool:
 		print("FAIL missions frame empty"); return false
 	var dec: Dictionary = OrionFrame.Decode_Frame(frame)
 	var ts := OrionMessages.Decode_Task_Set(dec.payload)
-	if ts.count != 2 or ts.missions.size() != 2:
+	if ts.mission_count != 2 or ts.member_count != 0 or ts.missions.size() != 2:
 		print("FAIL missions count: ", ts); return false
 	if ts.missions[0].type != 0 or absf(ts.missions[0].x - 3.0) > 0.0001 or absf(ts.missions[0].y - 5.0) > 0.0001:
 		print("FAIL mission0: ", ts.missions[0]); return false
 	if ts.missions[1].type != 0 or absf(ts.missions[1].x - 1.0) > 0.0001 or absf(ts.missions[1].y - 1.0) > 0.0001:
 		print("FAIL mission1: ", ts.missions[1]); return false
 	# 与 Rust 端字节比对：missions[0] = (type 0, x=3.0, y=5.0)
-	# payload: count=2 | 00 40 40 00 40 A0 00 00 | 00 3F 80 00 00 3F 80 00 00
+	# payload: [mission_count=2][member_count=0] | 00 40 40 00 40 A0 00 00 | 00 3F 80 00 00 3F 80 00 00
 	var payload: PackedByteArray = dec.payload
-	if payload[0] != 2:
-		print("FAIL missions count byte"); return false
-	if payload.slice(1, 2) != PackedByteArray([0x00]):
+	if payload[0] != 2 or payload[1] != 0:
+		print("FAIL missions count bytes"); return false
+	if payload.slice(2, 3) != PackedByteArray([0x00]):
 		print("FAIL mission0 type byte"); return false
-	if payload.slice(2, 6) != PackedByteArray([0x40, 0x40, 0x00, 0x00]):
-		print("FAIL mission0 x=3.0 BE: ", payload.slice(2, 6)); return false
+	if payload.slice(3, 7) != PackedByteArray([0x40, 0x40, 0x00, 0x00]):
+		print("FAIL mission0 x=3.0 BE: ", payload.slice(3, 7)); return false
 	print("PASS llm_missions"); return true
 
 
@@ -431,10 +467,10 @@ func _test_endianness() -> bool:
 	if mc.slice(1, 3) != PackedByteArray([0xFF, 0xCE]):
 		print("FAIL manual param i16 BE: ", mc.slice(1, 3)); return false
 
-	# 6) task_set x=12.5 → 0x41480000 → [41 48 00 00]
+	# 6) task_set x=12.5 → 0x41480000 → [41 48 00 00]（偏移 3..7：跳过 [m_count][mem_count][type]）
 	var ts := OrionMessages.Encode_Task_Set([{"type": 0, "x": 12.5, "y": 0.0}])
-	if ts.slice(2, 6) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
-		print("FAIL task_set f32 BE: ", ts.slice(2, 6)); return false
+	if ts.slice(3, 7) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
+		print("FAIL task_set f32 BE: ", ts.slice(3, 7)); return false
 
 	# 7) map_delta delta i8：-8 → 0xF8 位模式（Task 21）
 	var md := OrionMessages.Encode_Map_Delta(0, [{"gx": 0, "gy": 0, "delta": -8}])
