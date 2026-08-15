@@ -3,8 +3,8 @@
 ## meta
 - task: task_22_group_command
 - start: 2026-08-12
-- end:
-- status: in-progress
+- end: 2026-08-15
+- status: done (archived 2026-08-15)
 
 ## 方案
 - 全部统一多车命令：单车 = member_count=1；取消 = member_count=0
@@ -22,6 +22,12 @@
 - Step 4/5: auto_handler 右键 Goto + LLM 均改单条群发帧（selected_ids）
 - Step 6: e2e_multivehicle 加 GROUP/SINGLE 阶段（群发双车收到 ✓；单车非成员忽略 ✓）全 PASS
 - Step 7: docs/orion_protocol.md §1.5 hello peer_id 字段表 + §3.5 新布局/三分支/同批升级
+
+## 评审（2026-08-15 通过）
+- 代码核验：Step 1-7 与任务书一致（hello peer_id / Encode·Decode_Task_Set / cmd_send(targets) / 右键 Goto+LLM 群发 / members 下沉 manager）
+- 测试全绿：协议单测 16/16 PASS；e2e_multivehicle（群发双车收到 + 单车非成员忽略）PASS；e2e_orion（hello→map→manual→task_set→cancel）PASS
+- 文档：docs/orion_protocol.md §1.5 / §3.5 已同步（§3.5 标题存在重复，小瑕疵）
+- 遗留（不阻塞）：_Peer_Id_Bytes 查不到 peer_id 时仍插入 len=0 空成员（建议改跳过）；websocket_client.gd 文件头 Present 拼写
 
 ## 踩坑
 - `Array[String]([x])` 构造语法在 GDScript 4.7 **不支持**（Parse Error）→ 用 `[x] as Array[String]`

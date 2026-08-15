@@ -1,7 +1,7 @@
 # Task 22: Group Command 群发任务（Pictor 端同步 Orion task_14）
 
 > 创建日期：2026-08-12
-> 状态：✅ 已实施完毕（待人类评审 / 归档）
+> 状态：✅ 已实施完毕 + 已评审通过 + 已归档（2026-08-15）
 > 范围：hello peer_id 接入 + TASK_SET 群发编码 + cmd_send 路由重构 + 测试与文档
 
 ---
