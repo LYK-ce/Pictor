@@ -217,6 +217,6 @@ Main (main.gd)
 
 ## 9. 部署注意
 
-- `pictor_kernel.gdextension` + `libpictor_kernel.so` 从 `kernel_test/` 移到正式位置（如 `addons/pictor_kernel/` 或项目 `bin/`），`.gdextension` 内路径同步更新。
+- `.gdextension` 已置于项目根 `res://pictor_kernel.gdextension`（含 linux + windows 条目）；二进制产物 `.so`/`.dll` 放 `kernel_test/bin/`（gitignore，不提交）。
 - `MessageParser.parse_json` 的 hello 处理变死代码，可清理。
 - 风险（后置）：poll 队列无背压——pose ~10Hz/车 × N 车，主线程卡顿会积压陈旧数据。
