@@ -36,7 +36,4 @@ mode="2d"
 
 cell_size=1.0
 
-[websocket]
 
-url="ws://10.100.80.220:9090"
-reconnect_interval=3.0

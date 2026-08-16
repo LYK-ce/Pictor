@@ -3,15 +3,13 @@
 [ext_resource type="Script" uid="uid://dbtw7ka04tcgy" path="res://src/main/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://src/renderer_2d/renderer_2d.tscn" id="2_r2d"]
 [ext_resource type="PackedScene" path="res://src/renderer_2d/map_data_2d.tscn" id="3_md"]
-[ext_resource type="PackedScene" uid="uid://e00fqtu68eno" path="res://src/websocket/websocket_manager.tscn" id="4_ws"]
-[ext_resource type="PackedScene" uid="uid://bhsl8mnyldejx" path="res://src/ui/WebSocket/websocket_menu.tscn" id="5_menu"]
+[ext_resource type="Script" path="res://src/kernel/kernel_bridge.gd" id="4_kb"]
+[ext_resource type="PackedScene" path="res://src/ui/WebSocket/vehicle_panel_manager.tscn" id="5_vpm"]
 [ext_resource type="PackedScene" uid="uid://g7bchdk3ykyy" path="res://src/control/control.tscn" id="6_ctrl"]
 [ext_resource type="PackedScene" uid="uid://bhw00pp3bnwb4" path="res://src/camera/camera_2d.tscn" id="7_cam"]
 [ext_resource type="PackedScene" uid="uid://52ibu10nqcwt" path="res://src/ui/button_list.tscn" id="7_frqgp"]
 [ext_resource type="PackedScene" path="res://src/util/util.tscn" id="8_util"]
 [ext_resource type="PackedScene" uid="uid://bfn0swf4nchu1" path="res://src/ui/text_input.tscn" id="8_w0wra"]
-[ext_resource type="PackedScene" path="res://src/test/test_ws_server.tscn" id="9_km7bn"]
-[ext_resource type="Resource" path="res://Assets/2D/map_chunk_0_0.tres" id="10_erw1m"]
 [ext_resource type="PackedScene" uid="uid://ci3b8tr6nfigl" path="res://src/ui/scaler/scale.tscn" id="11_scale"]
 
 [node name="Main" type="Node" unique_id=602051622]
@@ -24,11 +22,12 @@ script = ExtResource("1_main")
 [node name="Renderer2D" parent="." unique_id=657749729 instance=ExtResource("2_r2d")]
 texture_filter = 1
 
-[node name="WebSocketManager" parent="." unique_id=99410890 instance=ExtResource("4_ws")]
+[node name="KernelBridge" type="Node" parent="."]
+script = ExtResource("4_kb")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=2072557646]
 
-[node name="WebSocketMenu" parent="UI" unique_id=739165699 instance=ExtResource("5_menu")]
+[node name="VehiclePanelManager" parent="UI" instance=ExtResource("5_vpm")]
 
 [node name="Button" parent="UI" unique_id=471177575 instance=ExtResource("7_frqgp")]
 
@@ -39,15 +38,3 @@ texture_filter = 1
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
 
 [node name="Util" parent="." unique_id=1916934973 instance=ExtResource("8_util")]
-
-[node name="TestWSServer" parent="." unique_id=1866517460 instance=ExtResource("9_km7bn")]
-send_map = true
-map_chunk = ExtResource("10_erw1m")
-
-[node name="TestWSServer2" parent="." unique_id=770708464 instance=ExtResource("9_km7bn")]
-vehicle_id = "test_car_1"
-port = 9091
-
-[node name="TestWSServer3" parent="." unique_id=1386775380 instance=ExtResource("9_km7bn")]
-vehicle_id = "test_car_2"
-port = 9092

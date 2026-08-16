@@ -21,7 +21,7 @@ func _ready() -> void:
 	EventBus.vehicle_unregistered.connect(_on_vehicle_unregistered)
 
 
-func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
+func _on_vehicle_registered(vehicle_id: String) -> void:
 	if _vehicles.has(vehicle_id):
 		return
 	if not vehicle_scene:

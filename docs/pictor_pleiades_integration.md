@@ -1,7 +1,7 @@
-# Pictor × Pleiades 集成设计（逻辑与表现分离）
+# Pictor × Pleiades 集成设计（逻辑与表现分离，桥 = 哑管道）
 
-> 创建日期：2026-08-15
-> 状态：🟡 草案（架构已收敛，待拍板边界问题）
+> 更新：2026-08-16（按「桥 = 哑管道」最终架构重写，覆盖 08-15 草案）
+> 状态：✅ 方案定稿（6 条决策 + 2 条暂缓），待实施（P3）
 > 前身：task_23（WebSocket 重连）—— 本方案使其作废
 
 ---
@@ -10,128 +10,213 @@
 
 真实部署中，车端 Wi-Fi 漫游（AP 切换）会触发 NetworkManager 重新激活接口 + 重跑 DHCP，导致 L3 地址被摘，**所有 TCP 连接被杀**（SSH / WebSocket / VNC 实测均断，`journalctl` 日志已实锤）。
 
-而车端已有的 **libp2p P2P 网络**（`Orion/` Rust 项目，`libp2p 0.56 + tcp + mdns`）在同样的漫游中**不断线**——原因是 `swarm_events.rs` 里 mDNS 发现后自动 `dial` 重连：
+而车端已有的 **libp2p P2P 网络**（`Orion/` Rust 项目，`libp2p 0.56 + tcp + mdns`）在同样的漫游中**不断线**——`swarm_events.rs` 里 mDNS 发现后自动 `dial` 重连。
 
-```rust
-mdns::Event::Discovered(peers) => {
-    for (peer_id, addr) in peers {
-        if peer_id != self.local_peer_id {
-            self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
-            if let Err(e) = self.swarm.dial(addr.clone()) { /* 主动重拨 */ }
-        }
-    }
-}
-```
-
-**结论**：与其给 Pictor 的 WebSocket 打重连补丁（task_23），不如让 Pictor 直接接入已有的、天生抗断的 libp2p 网络，并彻底移除 WebSocket。
+**结论**：与其给 Pictor 的 WebSocket 打重连补丁，不如让 Pictor 直接接入已有的、天生抗断的 libp2p 网络，并彻底移除 WebSocket。
 
 ---
 
-## 2. 架构原则：逻辑与表现分离
+## 2. 架构原则
 
-类比游戏开发：**Pleiades = 游戏服务器（逻辑），Godot = 客户端（表现）**。两者通过一个薄薄的桥（GDExtension）通信，逻辑层完全不感知表现层的存在。
+**Pleiades = 逻辑层（网络/协议），Godot = 表现层（渲染/UI/输入），桥 = 哑管道（只透传、不解析、不合并）。**
+
+> 关键变化（vs 08-15 草案）：桥**不再解析/合并业务数据**。pose/map 以原始 ORION 帧透传，由 Godot 复用现有解析/渲染链路；多车地图合并从「放 Rust」改为「暂缓」。
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Godot 进程（单进程）                    │
-│                                                         │
-│  ┌───────────────┐   信号 / 方法调用   ┌──────────────┐  │
-│  │  Godot 表现层  │ ◄─────────────────► │ Pleiades 逻辑层│  │
-│  │  (帧循环)      │   GDExtension 桥    │  (后台 tokio) │  │
-│  └───────────────┘                     └──────┬───────┘  │
-│   渲染/UI/相机/输入                           │ libp2p   │
-└──────────────────────────────────────────────┼──────────┘
-                                               │ mDNS/gossipsub
-                                    ┌──────────┴──────────┐
-                                    │ 车们 (orion-robot)   │
-                                    │ mDNS 自动发现 + 加入 │
-                                    └─────────────────────┘
+Godot 进程（单进程）
+├── KernelBridge（Godot，薄适配器）
+│     ├── 上行：robot_frame → parse_orion_frame → EventBus；peer_* → EventBus
+│     └── 下行：EventBus.cmd_send → OrionMessages.Build_Cmd → kernel.send_command
+├── PleiadesKernel（Rust GDExtension，哑管道）
+│     └── libp2p swarm（mDNS 自动发现 / gossipsub 广播 / Send_Data_Try 单播）
+└── 表现层（Renderer2D / VehiclePanelManager / Camera / ControlMaster）
+                                        │
+                            ┌───────────┴───────────┐
+                            │   车们 (orion-robot)    │
+                            │ mDNS 自动发现 + 加入    │
+                            └───────────────────────┘
 ```
 
 ---
 
-## 3. 职责划分
+## 3. Rust 侧：PleiadesKernel（哑管道）
 
-### Pleiades（逻辑层）—— 全部网络逻辑
+`SrcPictorKernel/lib.rs`（✅ 已实现）。Godot 通过 `.gdextension` 加载 `libpictor_kernel.so`。
 
-| 职责 | 现状 | 目标位置 |
+**7 个上行信号**：
+
+| 信号 | 参数 | 来源 |
 |---|---|---|
-| libp2p swarm / mDNS 自动发现加入 | ✅ 已实现（`Network/`） | 保持 |
-| gossipsub pose/map 广播 | ✅ 已实现（`TOPIC_ROBOT_POSE/MAP`） | 保持 |
-| peer_id 身份 + peer 管理 | ✅ 已实现（`PeerManagement/`） | 保持 |
-| ORION 协议编解码 | ✅ 已实现（`Robot/core/protocol`） | 保持 |
-| 多车地图一致性/合并 | ⏳ 调研中（CRDT 调研报告） | 放 Pleiades |
-| LLM 指令解析 / STT 推理 | ⏳ task_16/17 | 放 Pleiades（有 ML 引擎） |
+| `kernel_ready` | — | 后台 bootstrap 完成，发一次 |
+| `robot_frame` | `data: PackedByteArray`（原始 ORION 帧） | robot_bus（POSE/MAP_FULL/MAP_DELTA 原样透传） |
+| `peer_discovered` | `peer_id: String(hex)` | event_bus mDNS 发现 |
+| `peer_left` | `peer_id: String(hex)` | event_bus mDNS 过期 |
+| `peer_connected` | `peer_id: String(hex)` | event_bus TCP 连接建立 |
+| `peer_disconnected` | `peer_id: String(hex)` | event_bus TCP 断开 |
+| `peer_info_updated` | `peer_id: String(hex), peer_name: String` | event_bus 节点名 gossip |
 
-### Godot（表现层）—— 只负责呈现
+**2 个方法**：`send_command(peer_id_hex, frame) -> bool`（下发完整 ORION 帧）、`poll()`（每帧排空队列 emit 信号）。
 
-| 职责 | 现状 |
-|---|---|
-| 2D 地图渲染（TileMapLayer，log-odds → tile） | `renderer_2d/` 保持 |
-| 车辆 Sprite / 相机 / UI 面板 / 缩放 | 保持 |
-| 输入（WASD / 鼠标 Goto / 文本框） | 保持，但产出的是"指令"，交桥下发给逻辑层 |
-
-### 桥（GDExtension）—— 逻辑与表现的接缝
-
-- **逻辑 → 表现**（事件/数据）：`pose_received` / `map_updated` / `peer_connected` / `peer_disconnected` / `cmd_result`
-- **事件机制**：Rust 侧 `EventBus`（`Src/EventBus/`）发布 → 桥订阅 → `sync_to_main_thread` 排到主线程 → 发 Godot 信号 → GDScript `connect` 接收（与现有 `EventBus` Autoload 模式一致）
-- **表现 → 逻辑**（命令/查询）：`send_manual(peer_id, action)` / `send_task_set(members, missions)` / `get_peers()`
+要点：
+- 桥不解析、不合并业务数据，只透传 robot_bus 原始帧 + event_bus peer 事件。
+- peer_id 统一 **hex**（event_bus 里 base58 → hex 在桥内 `base58_to_hex()` 完成）。
 
 ---
 
-## 4. 关键技术决策
+## 4. Godot 侧架构
 
-| 决策 | 结论 |
-|---|---|
-| 通信方式 | ✅ 纯 libp2p，**移除 WebSocket**（车端 `WebSocket/server.rs` 遥控通道退役，Godot 侧 `websocket/` 整套删除） |
-| 进程模型 | ✅ GDExtension **内嵌**（单进程多线程，无本地 IPC） |
-| 无头模式 | ✅ Pleiades 增加无头模式：不启动 TUI（`Src/TUI/` 独立模块），状态改由桥导出 |
-| 嵌入范围 | ✅ 保留全部功能（ML/API/VM 照常），仅无头化（不启动 TUI） |
-| 线程模型 | ✅ 后台 `std::thread` 起 tokio runtime 跑 swarm；数据全走信号（地图 PackedByteArray / 位姿 Dictionary），事件经 `sync_to_main_thread` 排到主线程发信号 |
-| 车端改动 | 数据路径零改动（gossipsub 已在广播）；命令路径新增 request-response 接收路由（复用 parse_orion_frame + robot_cmd_tx） |
+### 4.1 KernelBridge（新增，`src/kernel/kernel_bridge.gd`）
+
+`WebSocketManager` 的替代者，但**薄得多**——不再做连接管理，只做两件事：
+
+1. **上行翻译**：挂 `PleiadesKernel`、每帧 `poll()`，把 7 个桥信号翻译成 EventBus 信号；
+2. **下行路由**：消费 `EventBus.cmd_send`，拼帧后逐车 `kernel.send_command(hex, frame)`。
+
+### 4.2 桥信号 → EventBus 映射
+
+| 桥信号 | EventBus | 说明 |
+|---|---|---|
+| `kernel_ready()` | —（忽略/日志） | 决策：不做 UI 门控 |
+| `robot_frame(data)` | 解析后 → `pose_received` / `map_full_received` / `map_delta_received` | `parse_orion_frame` 按 msgid 分发，`vehicle_id = hex(sysid)` |
+| `peer_connected(hex)` | `vehicle_registered(hex)` | 建 Sprite + 面板（签名改 1 参） |
+| `peer_disconnected(hex)` | `vehicle_unregistered(hex)` | 移除 |
+| `peer_left(hex)` | （不消费） | mDNS 过期 ≠ 断连，不映射移除 |
+| `peer_discovered(hex)` | （不消费） | 仅 `peer_connected` 建 panel |
+| `peer_info_updated(hex, name)` | `peer_info_updated(hex, name)`（新） | 面板 ID 标签换车名 |
+
+> ⚠️ 前置改动：`MessageParser.parse_orion_frame` 目前丢弃 `frame.sysid`，需加 `"sysid"` 字段透传，否则多车身份无法区分。
+
+### 4.3 车辆身份与生命周期
+
+- **身份键 = `hex(sysid)`**（`robot_frame` 帧头 sysid = 完整 peer_id 字节，与 `peer_*` 事件已统一 hex）。
+- 生命周期：
+  - `peer_connected` → `vehicle_registered` → Renderer2D 建 Sprite + VehiclePanelManager 建面板（面板名先显示「连接中」）
+  - `peer_info_updated` → 面板 ID 标签换成车名
+  - `peer_disconnected` → `vehicle_unregistered` → 清理（`peer_left` 不消费）
+- 连接生命周期/失联判定由 Rust（libp2p swarm）负责，Godot **不做**心跳超时清理。
+
+### 4.4 控制逻辑（不变）
+
+操作方式与命令下发**完全不变**，全部 EventBus 驱动：
+
+| 操作 | 输入组件 | 产物 |
+|---|---|---|
+| Ctrl+左键点选面板 | `vehicle_panel.gd` → `vehicle_panel_manager.gd` | 更新 `app_state.selected_ids` |
+| 点面板 Manual 切换 | `vehicle_panel.gd` → `vehicle_panel_manager.gd` | 更新 `app_state.manual_target` + `cmd_send(模式切换)` |
+| 右键地图 Goto | `auto_handler.gd` | `cmd_send(selected_ids, TASK_SET goto)` |
+| WASD 手动 | `input_handler.gd` → `control_master` | `cmd_send([manual_target], MANUAL_CONTROL)` |
+| LLM 指令 | `text_input.gd` → `auto_handler.gd` → `llm.gd` | `cmd_send(selected_ids, TASK_SET)` |
+
+控制层（`control/`、`ui/`、`util/llm.gd`、`util/audio_input.gd`）全部**零改动**——它们只 `emit cmd_send`，消费方从 `WebSocketManager` 换成 `KernelBridge`，对上层透明。
+
+### 4.5 场景结构（新 `main.tscn`）
+
+```
+Main (main.gd)
+├── Camera2D
+├── MapData2D
+├── Renderer2D
+├── KernelBridge          ← 新增，替换 WebSocketManager 位置
+├── UI (CanvasLayer)
+│   ├── ButtonList
+│   ├── TextInput
+│   └── Scale
+├── ControlMaster
+└── Util
+```
+（移除：`WebSocketManager`、`WebSocketMenu`、`TestWSServer`×3）
 
 ---
 
 ## 5. 数据流
 
+### 5.1 上行（车 → Godot）
+
 ```
-车 (orion-robot)
-  └─ gossipsub 广播 pose/map ──► 终端 Pleiades swarm（后台 tokio）
-                                    ├─ pose → 环形缓冲 → Godot _process 逐帧 drain → Sprite 更新
-                                    ├─ map  → 同上 → TileMapLayer 重绘
-                                    └─ peer 事件 → sync_to_main_thread 信号 → UI 面板
-Godot 输入（WASD/Goto/文本）
-  └─ 桥方法调用 ──► Pleiades ── libp2p ──► 车
+车 ──gossipsub 原始帧──► robot_bus ──► 桥 robot_forward_loop ──► out_queue ──► poll() ──► robot_frame
+                                                                                        └─► KernelBridge
+                                                                                              └─► MessageParser.parse_orion_frame(data)
+                                                                                                    ├─ POSE(msgid1)     → pose_received → Sprite/面板/相机
+                                                                                                    ├─ MAP_FULL(msgid2) → map_full_received → MapData2D.set_full
+                                                                                                    └─ MAP_DELTA(msgid3)→ map_delta_received → MapData2D.set_delta
+                                                                                                                          └─► cells_changed → update_cells 增量重绘
 ```
 
-- **上行（车→终端）**：gossipsub 广播，订阅即得，免费获得。
-- **下行（终端→车）**：✅ 已定（2026-08-15 拍板）——request-response 单播。终端按 peer_id 单点发送命令，车端收到转 robot_cmd_tx。
+### 5.2 下行（Godot → 车）
+
+```
+控制层 ──► EventBus.cmd_send(targets, cmd)
+              └─► KernelBridge
+                    ├─ TASK_SET 时填 members（hex → bytes）
+                    ├─ OrionMessages.Build_Cmd(cmd) → frame
+                    └─ for id in targets: kernel.send_command(id, frame)
+                          └─► 桥 Send_Data_Try(peer, Robot, frame) → 单播到指定车
+```
 
 ---
 
-## 6. 待拍板边界问题
+## 6. 已拍板决策（2026-08-16）
 
-1. **地图合并逻辑放哪**：`map_data_2d.gd` 的多车聚合（accumulate / log-odds 合并）是"逻辑"还是"表现"？倾向放 Pleiades（与车端 grid.rs 同构、配合 CRDT 调研），Godot 只做"log-odds → tile"的渲染。但这与"多车地图一致性"调研耦合，需确认 scope。
-2. ~~**命令下发通道**~~ ✅ 已定：request-response 单播（2026-08-15 拍板）。在现有 request-response 协议加机器人控制命令类型，车端收到转 robot_cmd_tx。
-3. **LLM/STT 归属**：`llm.gd`（HTTP 调 DeepSeek）是否一并迁入 Pleiades（它已有 candle/ML 引擎 + axum API）？倾向迁入，Godot 只发文本、收解析后命令。
-4. **坐标变换归属**：`CoordUtils`（真实世界↔游戏像素）倾向留在 Godot（纯表现层换算），不在桥上传递。
+| # | 决策 |
+|---|------|
+| 1 | peer_id 统一 hex（桥内 base58 → hex） |
+| 2 | 地图原始帧透传；多车合并 + 返还合并全量**暂缓** |
+| 3 | WebSocket **连接层**移除；`protocol/` 四件套保留复用 |
+| 4 | `kernel_ready` 前 UI 门控**不做**（fire-and-forget） |
+| 5 | poll 队列背压风险**后置** |
+| 6 | 车辆注册/移除由 peer 事件驱动（`peer_connected`→显示、`peer_disconnected`→移除、`peer_left` 不消费）；Godot **不做**心跳超时 |
+| 7 | 面板显示名「连接中」→ 车名；Disconnect 按钮删除；`peer_discovered` 不消费 |
+| 8 | e2e 测试删除（`test_ws_server`/`e2e_*`）；⏸️ LLM/STT 归属暂缓 |
 
 ---
 
-## 7. 分阶段计划
+## 7. 文件级改动
 
-| 阶段 | 内容 | 验证点 |
+**新增**
+- `src/kernel/kernel_bridge.gd`（+可选 `.tscn`）
+- `src/ui/WebSocket/vehicle_panel_manager.tscn`（面板管理器承载，从 websocket_menu 抽出）
+
+**修改**
+- `src/event_bus/event_bus.gd`：`vehicle_registered` 去 `url` 参；删 `ws_connect_requested` / `ws_disconnect_requested` / `ws_connected` / `map_merged`；新增 `peer_info_updated`
+- `src/websocket/protocol/message_parser.gd`：`parse_orion_frame` 透传 `sysid`
+- `src/renderer_2d/map_data_2d.gd`：`accumulate_full`→`set_full`（替换）；删 `map_merged.emit` + `MapAccumulator.add_full`
+- `src/renderer_2d/renderer_2d.gd`：`_on_vehicle_registered` 签名 1 参
+- `src/ui/WebSocket/vehicle_panel_manager.gd`：`_on_vehicle_registered` 签名 1 参；连接 `peer_info_updated`
+- `src/ui/WebSocket/vehicle_panel.gd`：删 Disconnect 按钮；显示名「连接中」→ 车名
+- `src/main/main.tscn`：移除 WebSocket 节点、挂 KernelBridge
+- `src/main/main.gd`：视需要
+
+**删除（连接层）**
+- `src/websocket/websocket_manager.gd` / `.tscn`
+- `src/websocket/websocket_client.gd` / `.tscn`
+- `src/ui/WebSocket/websocket_menu.gd` / `.tscn`
+- `src/ui/WebSocket/web_socket_creation_menu.gd` / `.tscn`
+- `src/test/test_ws_server.gd` / `.tscn`
+- `src/test/test_e2e_multivehicle.gd` / `.tscn`
+- `src/test/test_e2e_orion.gd`
+
+**保留（测试）**：`test_orion_protocol.gd`（纯协议 roundtrip，无 WS 依赖）、`audio_record_test.gd` / `.tscn`（纯音频）
+
+**暂缓（保留文件，不接入）**
+- `src/renderer_2d/map_accumulator.gd`（多车合并阶段启用）
+- `src/util/llm.gd`、`src/control/audio_input.gd`（LLM/STT 归属暂缓）
+
+---
+
+## 8. 分阶段计划
+
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| P0 | GDExtension 骨架：起 tokio + swarm，订阅 pose 打日志 | headless 打印车端 pose |
-| P1 | 抽网络内核 crate + Pleiades 无头模式（feature-gate ML/TUI） | 车端/终端共用编译通过 |
-| P2 | 桥 API：pose/map 订阅 + 命令下发 + peer 事件 | Godot 显示真实车 pose |
-| P3 | Godot 拆除 WebSocket 栈，切换到桥 | 群发 Goto 跑通 |
-| P4 | e2e + 断线重连验证 | 拔网线 → 自动恢复（应天然通过） |
+| P0 | GDExtension 骨架：tokio + swarm | ✅ 完成（kernel_test 验证） |
+| P1 | Pleiades 无头模式 + 桥 crate 骨架 | ✅ 完成 |
+| P2 | 桥 API：robot_frame + peer 事件 + send_command/poll + hex 统一 | ✅ 完成 |
+| P3 | Godot 拆 WebSocket 连接层，KernelBridge 切桥 | ⬜ 待做 |
+| P4 | e2e + 断线重连验证 | ⬜ 待做（联调方案暂缓） |
 
 ---
 
-## 8. 与现有任务的关系
+## 9. 部署注意
 
-- **task_23（WebSocket 重连）**：本方案使其**作废**，建议标记 superseded。
-- **task_17（STT）/ task_16（LLM）**：并入"Pleiades 逻辑层"，与桥共用 GDExtension 脚手架。
-- **多车地图一致性调研**：与边界问题 1 耦合，需确定是否纳入本方案 scope。
+- `pictor_kernel.gdextension` + `libpictor_kernel.so` 从 `kernel_test/` 移到正式位置（如 `addons/pictor_kernel/` 或项目 `bin/`），`.gdextension` 内路径同步更新。
+- `MessageParser.parse_json` 的 hello 处理变死代码，可清理。
+- 风险（后置）：poll 队列无背压——pose ~10Hz/车 × N 车，主线程卡顿会积压陈旧数据。

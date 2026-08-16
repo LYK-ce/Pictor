@@ -13,15 +13,15 @@ var _chunks: Dictionary = {}  # Vector2i(chunk_x, chunk_y) → ChunkData2D
 
 
 func _ready() -> void:
-	EventBus.map_full_received.connect(accumulate_full)
+	EventBus.map_full_received.connect(set_full)
 	EventBus.map_delta_received.connect(set_delta)
 
 
 # ─── 全局入口 ─────────────────────────────────────────────────
 
-## 接入上报 own FULL → 累加进本地合并表（车→终端方向 = 累加语义，阶段 2）。
-## 表初始全 0 时首次累加 ≡ 替换（单车行为不变）；重连/重复接入当新车处理（整表累加）。
-func accumulate_full(vehicle_id: String, chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
+## 接入上报 own FULL → 替换本地表（单表语义：MAP_FULL=replace；多车合并暂缓，后置）
+
+func set_full(vehicle_id: String, chunk_x: int, chunk_y: int, cells: PackedByteArray) -> void:
 	# 防御：越界字节 clamp 到 [−8, +8]（车端正常只发 [−8, 8]）
 	var incoming := PackedByteArray()
 	incoming.resize(cells.size())
@@ -29,13 +29,13 @@ func accumulate_full(vehicle_id: String, chunk_x: int, chunk_y: int, cells: Pack
 		var v := ChunkData2D.to_i8(cells[i])
 		incoming[i] = ChunkData2D.to_u8(clampi(v, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP))
 	var chunk := _get_or_create_chunk(chunk_x, chunk_y)
-	chunk.cells = MapAccumulator.add_full(chunk.cells, incoming)
+	chunk.cells = incoming
 	# DEBUG
 	var c := _count_states(chunk.cells)
-	print("[MapData2D] accumulate_full: veh=%s chunk(%d,%d) [free:%d occupied:%d unknown:%d]" % [vehicle_id, chunk_x, chunk_y, c[0], c[1], c[2]])
-	# 显示刷新 + 返还触发（同步链，载荷 = 聚合后的合并表快照）
+	print("[MapData2D] set_full: veh=%s chunk(%d,%d) [free:%d occupied:%d unknown:%d]" % [vehicle_id, chunk_x, chunk_y, c[0], c[1], c[2]])
+	# 显示刷新
 	EventBus.chunk_updated.emit(chunk_x, chunk_y)
-	EventBus.map_merged.emit(vehicle_id, chunk_x, chunk_y, chunk.cells)
+	
 
 
 func set_delta(voxels: Array) -> void:

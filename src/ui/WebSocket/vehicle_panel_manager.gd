@@ -14,9 +14,10 @@ func _ready() -> void:
 	EventBus.vehicle_registered.connect(_on_vehicle_registered)
 	EventBus.pose_received.connect(_on_pose)
 	EventBus.vehicle_unregistered.connect(_on_vehicle_unregistered)
+	EventBus.peer_info_updated.connect(_on_peer_info_updated)
 
 
-func _on_vehicle_registered(vehicle_id: String, _url: String) -> void:
+func _on_vehicle_registered(vehicle_id: String) -> void:
 	if _panels.has(vehicle_id):
 		return
 	var panel := vehicle_panel_scene.instantiate()
@@ -83,6 +84,11 @@ func _on_vehicle_unregistered(vehicle_id: String) -> void:
 	if app_state.mode == AppStateResource.Mode.FOLLOW and vehicle_id == app_state.selected_id:
 		app_state.mode = AppStateResource.Mode.NONE
 
+
+func _on_peer_info_updated(vehicle_id: String, peer_name: String) -> void:
+	var panel = _panels.get(vehicle_id)
+	if panel:
+		panel.set_vehicle_name(peer_name)
 
 func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	var panel = _panels.get(vehicle_id)
