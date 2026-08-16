@@ -20,6 +20,7 @@ func _init() -> void:
 	ok = ok and _test_parser_dispatch()
 	ok = ok and _test_endianness()
 	ok = ok and _test_llm_missions()
+	ok = ok and _test_circle_task_set()
 	ok = ok and _test_log_odds_signed()
 	ok = ok and _test_clamp()
 	ok = ok and _test_threshold()
@@ -281,6 +282,53 @@ func _test_llm_missions() -> bool:
 	if payload.slice(3, 7) != PackedByteArray([0x40, 0x40, 0x00, 0x00]):
 		print("FAIL mission0 x=3.0 BE: ", payload.slice(3, 7)); return false
 	print("PASS llm_missions"); return true
+
+
+# ─── Task 24：Circle 命令（mission type=1 环形散布）────────────
+
+func _test_circle_task_set() -> bool:
+	# 归一化：字符串 type → 整数（大小写不敏感；未知→goto）
+	if ProtocolDef.Mission_Type_From("circle") != ProtocolDef.MISSION_TYPE_CIRCLE:
+		print("FAIL mission_type_from circle"); return false
+	if ProtocolDef.Mission_Type_From("CIRCLE") != ProtocolDef.MISSION_TYPE_CIRCLE:
+		print("FAIL mission_type_from CIRCLE case"); return false
+	if ProtocolDef.Mission_Type_From("goto") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from goto"); return false
+	if ProtocolDef.Mission_Type_From("unknown") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from unknown"); return false
+	if ProtocolDef.Mission_Type_From(1) != 1:
+		print("FAIL mission_type_from int passthrough"); return false
+
+	# 构造：build_auto_push_circle → type=1 + 圆心坐标
+	var cmd := MessageBuilder.build_auto_push_circle(1.5, 2.5)
+	if cmd.msgid != ProtocolDef.MSGID_TASK_SET:
+		print("FAIL circle msgid"); return false
+	var m0: Dictionary = cmd.missions[0]
+	if m0.type != ProtocolDef.MISSION_TYPE_CIRCLE or absf(m0.x - 1.5) > 0.0001 or absf(m0.y - 2.5) > 0.0001:
+		print("FAIL circle build: ", m0); return false
+
+	# 编解码 roundtrip：type=1 保持（9 字节布局不变）
+	var payload := OrionMessages.Encode_Task_Set(cmd.missions)
+	var dec := OrionMessages.Decode_Task_Set(payload)
+	if not dec.ok or dec.mission_count != 1 or dec.missions.size() != 1:
+		print("FAIL circle roundtrip decode: ", dec); return false
+	var dm: Dictionary = dec.missions[0]
+	if dm.type != ProtocolDef.MISSION_TYPE_CIRCLE or absf(dm.x - 1.5) > 0.0001 or absf(dm.y - 2.5) > 0.0001:
+		print("FAIL circle roundtrip fields: ", dm); return false
+
+	# Encode_Task_Set 字符串 "circle" 归一化（LLM 防御路径）
+	var payload_str := OrionMessages.Encode_Task_Set([{"type": "circle", "x": 3.0, "y": 4.0}])
+	var dec_str := OrionMessages.Decode_Task_Set(payload_str)
+	var dm2: Dictionary = dec_str.missions[0]
+	if dm2.type != ProtocolDef.MISSION_TYPE_CIRCLE or absf(dm2.x - 3.0) > 0.0001 or absf(dm2.y - 4.0) > 0.0001:
+		print("FAIL circle string normalize: ", dm2); return false
+
+	# build_task_set 字符串 "circle" 归一化（LLM 链路）
+	var ms := MessageBuilder.build_task_set([{"type": "circle", "x": 3.0, "y": 4.0}])
+	var ms0: Dictionary = ms.missions[0]
+	if ms0.type != ProtocolDef.MISSION_TYPE_CIRCLE:
+		print("FAIL build_task_set circle normalize"); return false
+	print("PASS circle_task_set"); return true
 
 
 # ─── Task 21：log-odds 语义边界用例 ────────────────────────────

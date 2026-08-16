@@ -42,6 +42,17 @@ const MANUAL_DEFAULT_SPEED := 50
 # ─── ORION_TASK_SET mission type ─────────────────────────────
 
 const MISSION_TYPE_GOTO := 0
+const MISSION_TYPE_CIRCLE := 1   # Task 24：环形散布（x/y = 圆心，半径 0.5m 车端写死）
+
+## 字符串/数字 → mission type 整数（"goto"→0，"circle"→1；未知字符串→0）
+static func Mission_Type_From(t) -> int:
+	if t is String:
+		match t.to_lower():
+			"circle":
+				return MISSION_TYPE_CIRCLE
+			_:
+				return MISSION_TYPE_GOTO
+	return int(t)
 
 
 # ─── cell 三态（仅显示层阈值派生结果与旧测试比对用）────────────

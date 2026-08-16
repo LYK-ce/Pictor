@@ -187,7 +187,7 @@ static func Encode_Task_Set(missions: Array, members: Array = []) -> PackedByteA
 		# mission type 归一化：LLM 可能输出字符串 "goto"（防御性）
 		var mt = mi.get("type", ProtocolDef.MISSION_TYPE_GOTO)
 		if mt is String:
-			mt = ProtocolDef.MISSION_TYPE_GOTO
+			mt = ProtocolDef.Mission_Type_From(mt)
 		buf[off] = int(mt)
 		OrionFrame.Write_F32_BE(buf, off + 1, mi.get("x", 0.0))
 		OrionFrame.Write_F32_BE(buf, off + 5, mi.get("y", 0.0))

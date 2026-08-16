@@ -267,7 +267,6 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 映射：`ORION_MANUAL_CONTROL` → `Command::Manual(ManualCmd::*)` / `Command::Mode(ModeCmd::*)`。
 
-### 3.5 ORION_TASK_SET（msgid 5）— 任务队列替换
 ### 3.5 ORION_TASK_SET（msgid 5）— 任务队列替换 / 群发
 
 **整体替换语义**（非追加）：收到即丢弃当前任务队列（含正在执行的任务，立即中断），装载新队列从头执行。
@@ -285,9 +284,11 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `type` | uint8 | 任务类型：0 = `Goto`（其余类型预留扩展） |
-| `x` | float | 目标点 X（全局世界坐标，米） |
-| `y` | float | 目标点 Y（全局世界坐标，米） |
+| `type` | uint8 | 任务类型：0 = `Goto`，1 = `Circle`（其余类型预留扩展） |
+| `x` | float | 目标点 X（全局世界坐标，米）；`Circle` 时为圆心 X |
+| `y` | float | 目标点 Y（全局世界坐标，米）；`Circle` 时为圆心 Y |
+
+> `Circle`（Task 24 / Orion task_18，2026-08-16）：半径**写死 0.5m**（= 与圆心隔 1 格，车端 `ring_cells(2)` 16 格），不进协议；车按 peer_id 字节升序排序后在环上**均匀铺开**（`idx·len/N`），第一版到达即停、不朝圆心；单车（member_count=1）落环第一个位置（正北）。见 `multi_robot_control.md` §4.3。
 
 **payload 布局**（大端）：
 
@@ -303,7 +304,7 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 **三分支语义**（2026-08-12 定稿）：
 - `member_count == 0` → **取消全部任务**（replace 空队列，老 count=0 取消语义）
 - `member_count == 1` → 单车任务（members 仅本车，目标点精确执行）
-- `member_count > 1` → 群发任务（取 missions 第一个 Goto 为目标点，每辆车按统一确定性算法散布分配）
+- `member_count > 1` → 群发任务（取 missions 第一个 `Goto` 或 `Circle` 为目标点，每辆车按统一确定性算法散布分配）
 
 行为约束（2026-08-07 决策 + 2026-08-12 扩展）：
 - **替换**：新队列到达即替换旧队列，不合并、不追加

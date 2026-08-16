@@ -1,33 +1,34 @@
 # Pictor Architecture
 
+> 更新日期：2026-08-16（对齐 KernelBridge 迁移后的实际代码；本文件以实际代码为准）
+
 ## 概述
 
-Pictor 是 Pleiades 系统的 Godot 可视化与控制终端。通过 WebSocket 与小车端 Pleiades 双向通信，支持多车同时连接。
+Pictor 是 Pleiades 系统的 Godot 可视化与控制终端。通过 Rust GDExtension（`PleiadesKernel`，libp2p）经 **KernelBridge** 与小车端双向通信，支持多车同时连接。
+
+> **连接层迁移**：原 WebSocket 连接层（`websocket_client` / `websocket_manager` / `hello` 握手）已退役，连接/Peer 管理完全在 Rust `PleiadesKernel`（libp2p swarm）内，Godot 只通过 `KernelBridge` 收发 ORION 帧。
 
 ## 场景结构
 
-主场景 `src/main/main.tscn` 组件树：
+主场景 `src/main/main.tscn` 组件树（7 个顶层节点）：
 
 ```
 Main (Node, main.gd)
-├── MapData2D (Node, %MapData2D)     ← 地图数据层，unique_name 全局访问
-├── Renderer2D (Node2D)              ← 2D 渲染器
-│   ├── MapContainer2D (Node2D)      ← 地图渲染
-│   │   ├── GroundLayer (TileMapLayer)
-│   │   └── WallLayer (TileMapLayer)
-│   ├── VehicleContainer (Node2D)    ← 车辆 Sprite 动态挂载点
-│   ├── InputIndicator (Node2D)      ← Goto 高亮框
-│   └── PathLine2D (Node2D)           ← 路径线条
-├── WebSocketManager (Node)          ← 多连接总管
-│   └── WebSocketClient × N          ← 动态实例化，每车一个
-├── ControlMaster (Node2D)           ← 控制总管 (Goto + Manual)
-│   └── InputHandler (Node)          ← 键盘 WASD 输入
-├── Camera (Camera2D)                ← 2D 相机（IDLE/FOLLOW 状态机）
-├── WebSocketMenu (Control)          ← 连接 UI
-│   └── VehiclePanelManager          ← 车辆信息面板总管
-│       └── VehiclePanel × N         ← 动态实例化，每车一个
-├── ButtonList (PanelContainer)      ← Lock Camera / Goto 按钮
-└── ZoomSlider (Control)             ← 缩放滑块
+├── Camera2D (camera_2d.tscn)              ← 2D 相机（IDLE/FOLLOW 状态机）
+├── MapData2D (map_data_2d.tscn)           ← 地图数据层（log-odds 存储，%MapData2D）
+├── Renderer2D (renderer_2d.tscn)          ← 2D 渲染总管
+├── KernelBridge (Node, kernel_bridge.gd)  ← Rust 桥适配器（替代 WebSocketManager）
+├── UI (CanvasLayer)
+│   ├── VehiclePanelManager (vehicle_panel_manager.tscn)  ← 车辆面板总管
+│   ├── Button (button_list.tscn)          ← Lock Camera / Goto / 录音按钮
+│   ├── TextInput (text_input.tscn)        ← 自然语言指令输入
+│   └── Scale (scale.tscn)                 ← 坐标标尺 + 状态栏
+├── ControlMaster (control.tscn, Node2D 无脚本)
+│   ├── InputHandler (input_handler.tscn)  ← 键盘 WASD 手动控制
+│   ├── AutoHandler (Node2D, auto_handler.gd)  ← 右键 Goto / Z 键 Circle / LLM 编排
+│   └── AudioInput (audio_input.tscn)      ← 麦克风录音
+└── Util (util.tscn)
+    └── LLM (llm.tscn)                     ← 自然语言 → 指令（DeepSeek）
 ```
 
 EventBus 通过 Autoload 注入，所有组件通过信号通信，无需场景挂载。
@@ -36,308 +37,205 @@ EventBus 通过 Autoload 注入，所有组件通过信号通信，无需场景�
 
 ```
 src/
-├── event_bus/
-│   └── event_bus.gd                 ← Autoload 单例
-├── app_state/
-│   └── app_state.gd                 ← AppStateResource (Mode 枚举 + selected_id)
+├── event_bus/event_bus.gd             ← Autoload 单例（15 个信号）
+├── app_state/app_state.gd(.tres)      ← AppStateResource（Mode 枚举 + selected_ids/manual_target）
 ├── main/
-│   ├── main.gd                      ← 入口脚本
-│   ├── main.tscn                    ← 入口场景
-│   ├── menu.gd                      ← 渲染模式选择菜单
-│   └── menu.tscn
-├── websocket/
-│   ├── protocol/
-│   │   ├── protocol_def.gd          ← 协议枚举/常量
-│   │   ├── message_builder.gd       ← 下行消息构造
-│   │   └── message_parser.gd        ← 上行消息解析
-│   ├── websocket_client.gd          ← WS 连接组件
-│   ├── websocket_client.tscn
-│   ├── websocket_manager.gd         ← 多连接管理
-│   └── websocket_manager.tscn
+│   ├── main.gd / main.tscn            ← 入口
+│   └── menu.gd / menu.tscn            ← 渲染模式菜单（⚠️未接入）
+├── kernel/
+│   └── kernel_bridge.gd               ← Rust 桥适配器（核心连接层）
+├── camera/camera_2d.gd/.tscn          ← 2D 相机
 ├── control/
-│   ├── control_master.gd            ← 控制总管 (Goto + Manual)
-│   ├── control_master.tscn
-│   ├── input_handler.gd             ← 键盘 WASD 输入
-│   └── input_handler.tscn
-├── camera/
-│   ├── camera_2d.gd                 ← 2D 相机 (IDLE/FOLLOW 状态机)
-│   └── camera_2d.tscn
+│   ├── control.tscn                   ← ControlMaster 容器（Node2D 无脚本）
+│   ├── input_handler.gd/.tscn         ← 手动 WASD
+│   ├── auto_handler.gd                ← 右键 Goto / Z 键 Circle / LLM 编排
+│   └── audio_input.gd/.tscn           ← 麦克风录音
 ├── renderer_2d/
-│   ├── renderer_2d.gd               ← 2D 渲染总管
-│   ├── renderer_2d.tscn
-│   ├── map_data_2d.gd               ← 地图数据（Chunk 存储）
-│   ├── map_data_2d.tscn
-│   ├── chunk_data_2d.gd             ← Chunk Resource 类型
-│   ├── map_container_2d.gd          ← TileMapLayer 渲染
-│   ├── map_container_2d.tscn
-│   ├── input_indicator.gd           ← Goto 高亮框
-│   ├── input_indicator.tscn
-│   ├── path_line_2d.gd              ← 路径线条（Line2D）
-│   ├── path_line_2d.tscn
-│   └── Vehicle/
-│       └── vehicle_2d.tscn          ← 车辆场景（AnimatedSprite2D + Camera2D）
-├── renderer_3d/
-│   ├── renderer_3d.gd               ← 3D 渲染总管（🔴 信号缺失，不可用）
-│   ├── renderer_3d.tscn
-│   ├── map_container_3d.gd          ← MultiMeshInstance3D 体素渲染
-│   ├── map_container_3d.tscn
-│   ├── vehicle_marker_3d.gd         ← 3D 车辆标记
-│   ├── vehicle_marker_3d.tscn
-│   ├── path_line_3d.gd              ← 3D 路径线条（ImmediateMesh）
-│   └── path_line_3d.tscn
+│   ├── renderer_2d.gd/.tscn           ← 2D 渲染总管
+│   ├── map_data_2d.gd/.tscn           ← 地图数据层（Chunk + log-odds）
+│   ├── chunk_data_2d.gd               ← Chunk Resource + i8/u8 转换
+│   ├── map_accumulator.gd             ← 多车聚合纯静态助手（⚠️暂未接入）
+│   ├── map_container_2d.gd/.tscn      ← TileMapLayer 渲染
+│   ├── input_indicator.gd             ← Goto/Circle 目标高亮框
+│   ├── path_line_2d.gd/.tscn          ← 路径线（⚠️未实例化）
+│   └── Vehicle/vehicle_2d.tscn        ← 车辆 Sprite
+├── renderer_3d/                       ← 3D 渲染（⚠️未接入，信号缺失）
+│   ├── renderer_3d.gd/.tscn
+│   ├── map_container_3d.gd/.tscn
+│   ├── vehicle_marker_3d.gd/.tscn
+│   └── path_line_3d.gd/.tscn
 ├── ui/
-│   ├── ui.gd                        ← UI 父容器 CanvasLayer
-│   ├── ui.tscn
-│   ├── button_list.gd               ← Lock Camera / Goto 按钮
-│   ├── button_list.tscn
-│   ├── help_label.gd                ← 操作说明标签
-│   ├── help_label.tscn
-│   ├── zoom_slider/
-│   │   ├── zoom_slider.gd           ← 缩放滑块（🔴 zoom_changed 信号缺失）
-│   │   └── zoom_slider.tscn
+│   ├── button_list.gd/.tscn           ← Lock Camera / Goto / 录音按钮
+│   ├── text_input.gd/.tscn            ← 自然语言输入框
+│   ├── help_label.gd/.tscn            ← 操作说明（⚠️未挂载，文本过时）
+│   ├── ui.gd/.tscn                    ← UI 父容器（⚠️未使用）
+│   ├── scaler/scale.gd/.tscn + axis_ruler.gd  ← 坐标标尺
 │   └── WebSocket/
-│       ├── websocket_menu.gd        ← Connect 按钮入口
-│       ├── websocket_menu.tscn
-│       ├── web_socket_creation_menu.gd  ← 地址/端口输入弹窗
-│       ├── web_socket_creation_menu.tscn
-│       ├── vehicle_panel.gd         ← 单车信息面板
-│       ├── vehicle_panel.tscn
-│       ├── vehicle_panel_manager.gd ← 多面板总管
-│       └── vehicle_panel_manager.tscn
-├── test/
-│   └── test_ws_server.gd            ← 多车测试用 WS Server
-└── utils/
-    └── coords.gd                    ← CoordUtils：真实世界 ↔ 游戏世界坐标转换
+│       ├── vehicle_panel.gd/.tscn     ← 单车信息面板
+│       └── vehicle_panel_manager.gd/.tscn  ← 多面板总管
+├── util/
+│   ├── util.gd/.tscn                  ← 工具箱容器（挂 LLM）
+│   └── llm.gd/.tscn                   ← DeepSeek 自然语言翻译
+├── utils/coords.gd                    ← CoordUtils 坐标转换
+├── websocket/protocol/                ← Orion 协议编解码（连接层退役，协议层保留）
+│   ├── protocol_def.gd                ← 常量 + mission type 归一化
+│   ├── orion_frame.gd                 ← MAVLink 风格帧编解码（大端）
+│   ├── orion_messages.gd              ← 5 种消息 payload 编解码 + Build_Cmd
+│   ├── message_builder.gd             ← 下行命令构造
+│   └── message_parser.gd              ← 上行帧解析（parse_orion_frame）
+└── test/
+    ├── test_orion_protocol.gd         ← 协议 headless 单测
+    └── audio_record_test.gd/.tscn     ← 录音验证场景
 ```
 
-## 连接流程
+## 连接流程（KernelBridge）
 
-多车连接采用 **hello 握手** 机制：
+无 hello 握手。车辆身份 = libp2p peer_id（帧头 sysid 完整字节），Pictor 侧以 hex 编码作为 `vehicle_id`：
 
 ```
-1. 用户在 WebSocketMenu 输入地址 → EventBus.ws_connect_requested
-2. WebSocketManager.create_connection(url) → 实例化 WebSocketClient，以 url 为临时 key
-3. WebSocket 握手完成 → WebSocketClient 等待 hello 包
-4. 小车发送 hello → MessageParser.parse_json() 识别 ProtocolDef.MSG_HELLO
-5. WebSocketClient 设 _identified=true → EventBus.vehicle_registered(vehicle_id, url)
-6. WebSocketManager 收到 → 将 _vehicles[url] 替换为 _vehicles[vehicle_id]
-7. Renderer2D 收到 → 创建 Vehicle2D Sprite
-8. VehiclePanelManager 收到 → 创建 VehiclePanel
-9. hello 之后的数据（pose / map_full / map_delta）正常流转
+1. Rust libp2p 连接建立 → kernel.peer_connected(peer_id hex)
+2. KernelBridge._on_peer_connected → EventBus.vehicle_registered(peer_id)
+3. Renderer2D 收到 → 实例化 vehicle_2d.tscn
+4. VehiclePanelManager 收到 → 实例化 vehicle_panel.tscn
+5. kernel.peer_info_updated → EventBus.peer_info_updated → 面板显示车名
+6. 之后数据（pose / map_full / map_delta）正常流转
+7. 断开 → kernel.peer_disconnected → vehicle_unregistered → 清理 Sprite/面板/相机/选中
 ```
 
 ## Protocol 层
 
-协议定义/构造/解析统一在 `src/websocket/protocol/`：
+协议定义/构造/解析统一在 `src/websocket/protocol/`，Orion 统一通信协议（MAVLink 风格帧，大端）：
 
 | 文件 | 职责 |
 |------|------|
-| `ProtocolDef` | 所有魔法字符串/数字常量（MSG_HELLO, CMD_MANUAL, CELL_FREE, BIN_CELLS_OFFSET 等） |
-| `MessageBuilder` | 下行消息构造，静态方法返回 Dictionary |
-| `MessageParser` | 上行消息解析（JSON + 二进制帧），静态方法返回结构化结果 |
+| `ProtocolDef` | 常量集中管理（MSGID_*/ACTION_*/MISSION_TYPE_*/LOG_ODDS_*/SYSID*/COMPID*/MAP_*）+ `Mission_Type_From()` 归一化 |
+| `OrionFrame` | 帧编解码：magic 0x4F + len u32 + seq + sysid_len + sysid(变长 peer_id) + compid + msgid u16 + payload + checksum |
+| `OrionMessages` | 5 种消息 payload 编解码（大端）+ 下行组装入口 `Build_Cmd` |
+| `MessageBuilder` | 下行命令构造（返回带 msgid 的 Dictionary） |
+| `MessageParser` | 上行帧解析 `parse_orion_frame`（`parse_json`/`MSG_HELLO` 为遗留死代码） |
 
-调用方使用 `MessageBuilder.build_xxx()` 构造命令，`MessageParser.parse_xxx()` 解析消息，不再手写 JSON 或硬编码字节偏移。
+5 种消息：
+
+| msgid | 消息 | 方向 |
+|---|---|---|
+| 1 | `ORION_POSE`（33B，含意图 valid/sub_gx/sub_gy） | 车 → 终端 |
+| 2 | `ORION_MAP_FULL`（log-odds i8 整表） | 双向 |
+| 3 | `ORION_MAP_DELTA`（差分 Δ 累加） | 车 → 终端 |
+| 4 | `ORION_MANUAL_CONTROL`（action + param） | 终端 → 车 |
+| 5 | `ORION_TASK_SET`（任务队列，含 members 群发） | 终端 → 车 |
+
+`ORION_TASK_SET` mission type：**0 = `Goto`，1 = `Circle`**（Task 24）。Circle 的 `x/y` = 圆心（世界坐标，米），**半径写死 0.5m 不进协议**，车端按 peer_id 字节升序在环上均匀铺开。
+
+身份约定：终端上行 = 空 sysid（sysid_len=0）+ compid=200；车 = compid=1。
 
 ## 地图存储架构
 
 ```
 MapData2D (Node, %MapData2D)
 ├── Chunk 大小: 256×256 cells
-├── Cell 编码: 0=可通行, 1=不可通行, 2=未知
 ├── 存储: Dictionary{Vector2i(chunk_x, chunk_y) → ChunkData2D}
-├── 持久化: user://map_data_2d/map_chunk_{x}_{y}.tres（暂时关闭）
+├── Cell 编码: log-odds i8（−8~+8，u8 位模式存储，clamp ±8）
+├── 显示三态: 阈值 ±6 派生（>+6 Occupied / <−6 Free / 其余 Unknown）
+├── 持久化: user://map_data_2d/（_save_chunk 已注释，暂关闭）
 └── API:
-    ├── set_full(chunk_x, chunk_y, cells: PackedByteArray)
-    ├── set_delta(voxels: Array)
-    ├── get_cell(gx, gy) → int
+    ├── set_full(vehicle_id, chunk_x, chunk_y, cells)  ← replace 语义
+    ├── set_delta(voxels)                              ← 累加式（先加后 clamp）
+    ├── get_cell(gx, gy) → int（i8）
     ├── get_chunk_cells(cx, cy) → PackedByteArray
-    └── load_chunk(cx, cy) → PackedByteArray
+    └── load_chunk(cx, cy) → PackedByteArray（无调用者）
 ```
 
 地图更新触发链：
 
-- **全量更新**：`set_full` → 写入 ChunkData2D → `EventBus.chunk_updated.emit(cx, cy)` → Renderer2D._on_chunk_updated() → MapContainer2D.render_chunk()（全量重绘）
-- **增量更新**：`set_delta` → 逐 cell 写入 → `EventBus.cells_changed.emit(updates)` → Renderer2D._on_cells_changed() → MapContainer2D.update_cells()（仅更新变动的 tile）
+- **全量更新**：`set_full` → 写入 ChunkData2D（replace + clamp）→ `chunk_updated.emit` → Renderer2D → MapContainer2D 全量重绘
+- **增量更新**：`set_delta` → 逐 cell `clampi(old+Δ, ±8)` → `cells_changed.emit` → Renderer2D → MapContainer2D 增量重绘
 
-## EventBus 信号
+> ⚠️ 多车地图合并暂缓：`set_full` 当前为 replace 语义（单表），`MapAccumulator` 存在但未接入；`map_delta_received` 未携带 vehicle_id。
+
+## EventBus 信号（15 个）
 
 | 信号 | 发送者 | 接收者 | 说明 |
 |------|------|------|------|
-| `pose_received(vehicle_id: String, pose: Dictionary)` | WebSocketClient | Renderer2D, VehiclePanelManager, Camera | 车辆位姿，含 x/y/z/yaw/vx/vy |
-| `map_full_received(chunk_x: int, chunk_y: int, cells: PackedByteArray)` | WebSocketClient | MapData2D | 全量 Chunk（二进制帧） |
-| `map_delta_received(voxels: Array)` | WebSocketClient | MapData2D | 增量地图（JSON） |
-| `chunk_updated(chunk_x: int, chunk_y: int)` | MapData2D | Renderer2D | Chunk 全量变更 → 触发全量重绘 |
-| `cells_changed(updates: Array)` | MapData2D | Renderer2D | 增量 cell 变更 → 触发增量更新 |
-| `ws_connected` | WebSocketClient | （暂无接收者） | WebSocket 握手完成 |
-| `ws_connect_requested(url: String)` | WebSocketCreationMenu | WebSocketManager | 用户请求连接 |
-| `ws_disconnect_requested(vehicle_id: String)` | VehiclePanel | WebSocketManager | 用户请求断开 |
-| `vehicle_registered(vehicle_id: String, url: String)` | WebSocketClient | WebSocketManager, Renderer2D, VehiclePanelManager | hello 包收到，身份确认 |
-| `vehicle_unregistered(vehicle_id: String)` | WebSocketManager | Renderer2D, VehiclePanelManager, Camera | 连接断开，清理资源 |
-| `selection_changed(id: String)` | AppStateResource (setter) | （暂无接收者） | 选中车辆变更 |
-| `mode_transited(mode: int)` | AppStateResource (setter) | Camera, ControlMaster, InputIndicator | Mode 切换（NONE/FOLLOW/GOTO） |
-| `cmd_send(vehicle_id: String, cmd: Dictionary)` | ControlMaster, VehiclePanel, VehiclePanelManager | WebSocketManager | PC → 小车控制指令 |
-| ⚠️ `zoom_changed(zoom: float)` | ❌ 未定义 | ZoomSlider emit/connect 但信号不存在 | 🔴 待修复 |
-| ⚠️ `voxel_received(voxels: Array)` | ❌ 未定义 | Renderer3D connect 但信号不存在 | 🔴 待修复 |
-| ⚠️ `path_received(path: Array)` | ❌ 未定义 | Renderer3D connect 但信号不存在 | 🔴 待修复 |
+| `pose_received(vehicle_id, pose)` | KernelBridge | Renderer2D, VehiclePanelManager, Camera2D | 车辆位姿 |
+| `map_full_received(vehicle_id, chunk_x, chunk_y, cells)` | KernelBridge | MapData2D | 全量地图（own 表） |
+| `map_delta_received(voxels)` | KernelBridge | MapData2D | 增量地图（无 vehicle_id） |
+| `chunk_updated(chunk_x, chunk_y)` | MapData2D | Renderer2D | 全量重绘触发 |
+| `cells_changed(updates)` | MapData2D | Renderer2D | 增量重绘触发 |
+| `vehicle_registered(vehicle_id)` | KernelBridge | Renderer2D, VehiclePanelManager | peer 接入 |
+| `vehicle_unregistered(vehicle_id)` | KernelBridge | Renderer2D, VehiclePanelManager, Camera2D | peer 断开 |
+| `peer_info_updated(vehicle_id, peer_name)` | KernelBridge | VehiclePanelManager | 车名更新 |
+| `selection_changed(id)` | （无） | （无） | ⚠️ 孤儿信号 |
+| `cmd_send(targets: Array[String], cmd)` | InputHandler, AutoHandler, VehiclePanelManager | KernelBridge | 控制指令下发 |
+| `goto_issued(x, y)` | AutoHandler | InputIndicator | Goto/Circle 目标高亮 |
+| `mode_transited(mode)` | AppStateResource (setter) | Camera2D | Mode 切换 |
+| `audio_record_started` | button_list | audio_input | 录音开始 |
+| `audio_record_finished` | button_list | audio_input | 录音结束 |
+| `command_requested(text)` | text_input | auto_handler | 自然语言指令 |
 
 ## 数据流
-
-### map_full（二进制帧）
-
-```
-小车 ──WS Binary──→ WebSocketClient._read_packets()
-                      └── MessageParser.parse_binary(pkt)
-                            └── EventBus.map_full_received.emit(chunk_x, chunk_y, cells)
-                                  └── MapData2D.set_full(chunk_x, chunk_y, cells)
-                                        ├── 写入 ChunkData2D.cells
-                                        └── EventBus.chunk_updated.emit(chunk_x, chunk_y)
-                                              └── Renderer2D._on_chunk_updated()
-                                                    ├── %MapData2D.get_chunk_cells(chunk_x, chunk_y)
-                                                    └── MapContainer2D.render_chunk(chunk_x, chunk_y, cells)
-                                                          ├── GroundLayer.set_cells_terrain_connect()  ← state=0
-                                                          └── WallLayer.set_cells_terrain_connect()    ← state=1
-```
-
-### map_delta（JSON 增量）
-
-```
-小车 ──WS Text──→ WebSocketClient._on_message()
-                    └── MessageParser.parse_json() → type="map_delta"
-                          └── EventBus.map_delta_received.emit(voxels)
-                                └── MapData2D.set_delta(voxels)
-                                      ├── _group_by_chunk() → 按 Chunk 分组
-                                      ├── set_chunk_delta(cx, cy, updates)
-                                      └── EventBus.cells_changed.emit(updates)
-                                            └── Renderer2D._on_cells_changed()
-                                                  └── MapContainer2D.update_cells(updates)
-```
 
 ### pose（车辆位姿）
 
 ```
-小车 ──WS Text──→ WebSocketClient._on_message()
-                    └── MessageParser.parse_json() → type="pose"
-                          └── EventBus.pose_received.emit(vehicle_id, pose_data)
-                                ├── Renderer2D._on_pose(vehicle_id, pose)
-                                │     ├── CoordUtils.real_to_game(x, z) → position
-                                │     └── rotation = yaw
-                                ├── Camera._on_pose(vehicle_id, pose)  [仅 FOLLOW + 匹配时]
-                                │     └── 更新 lerp 目标
-                                └── VehiclePanelManager._on_pose(vehicle_id, pose)
-                                      └── VehiclePanel.Update(id, pos, yaw, vel)
+车 → Rust robot_frame → KernelBridge._on_robot_frame
+  → MessageParser.parse_orion_frame → msgid=1
+  → EventBus.pose_received(vid, pose)
+      ├─ Renderer2D: 更新 vehicle_2d 位姿（CoordUtils.real_to_game + yaw）
+      ├─ Camera2D: 仅 FOLLOW 且 vid==selected_id 时更新 lerp 目标
+      └─ VehiclePanelManager: 面板更新位姿/速度
 ```
 
-### Mode 状态机
+### map_full / map_delta
 
 ```
-                         button_list: Goto toggle            button_list: Lock Camera toggle
-                    ┌──────────→  GOTO  ←─────────────────────────────┐
-                    │     ↑        │  ↑                                │
-                    │     │ 点击地图│  │ button_list: Goto toggle       │
-                    │     │ 自动退出│  └──────→ NONE ←──────┘          │
-                    │     │        │           ↑  │                    │
-                    │     └────────┘           │  │ vehicle_unregistered│
-                    │                          │  │ (仅 FOLLOW 时退出)  │
-                    └──── FOLLOW ←─────────────┘  └────────────────────┘
-                          ↑  │
-                          │  │ button_list: Lock Camera toggle
-                          └──┘
-
-AppStateResource.mode setter → EventBus.mode_transited.emit(mode) → 各组件响应:
-  Camera:       FOLLOW → State.FOLLOW, 其他 → State.IDLE
-  InputIndicator: GOTO → State.ACTIVE, 其他 → State.IDLE
-  ControlMaster:  GOTO → State.GOTO,   其他 → State.IDLE
-```
-
-### 选中 / 取消选中
-
-```
-用户点击 VehiclePanel.TakeControl 按钮
-  └── VehiclePanel.take_control_toggled(vehicle_id, pressed)
-        └── VehiclePanelManager._on_take_control_toggled()
-              ├── pressed=true:  释放旧车(→switch_to_auto), app_state.selected_id = 新车
-              ├── pressed=false: 释放当前(→switch_to_auto), app_state.selected_id = ""
-              └── AppStateResource.selected_id setter → EventBus.selection_changed.emit(id)
+车 → robot_frame → parse_orion_frame
+  ├─ msgid=2 → map_full_received(vid, chunk_x, chunk_y, cells) → MapData2D.set_full（replace）
+  └─ msgid=3 → map_delta_received(voxels) → MapData2D.set_delta（累加 clamp）
 ```
 
 ### cmd（控制指令）
 
 ```
-Manual 模式（键盘）:
-  用户按 W/A/S/D/Space
-    └── InputHandler._input() → MessageBuilder.build_manual_action/stop()
-          └── ControlMaster._on_ctrl_input(cmd)
-                ├── 若 app_state.selected_id 为空 → 忽略
-                └── EventBus.cmd_send.emit(selected_id, cmd)
+Manual 模式（键盘 WASD）:
+  按 W/A/S/D/Space → InputHandler._input → build_manual_*
+    → cmd_send.emit([manual_target], cmd)   # 无手动车则忽略
 
-Goto 模式（鼠标点击）:
-  用户点击 tile
-    └── ControlMaster._input()
-          ├── CoordUtils.game_to_tile() → CoordUtils.tile_to_real() → (x, y) 米
-          ├── MessageBuilder.build_auto_push_goto(x, y)
-          ├── EventBus.cmd_send.emit(selected_id, cmd)
-          └── app_state.mode = NONE（自动退出）
+Goto（右键点地图）:
+  右键 → AutoHandler._unhandled_input → game_to_tile → tile_to_real
+    → build_auto_push_goto(x, y) → cmd_send.emit(selected_ids, cmd) + goto_issued
+
+Circle（Z 键待命 + 左键点圆心）:
+  Z → _pending_action = CIRCLE → 左键 → _execute_pending
+    → build_auto_push_circle(x, y) → cmd_send.emit(selected_ids, cmd) + goto_issued
+
+LLM（自然语言）:
+  TextInput → command_requested → AutoHandler → util.llm.generate_cmds
+    → cmds_generated → build_task_set(cmds) → cmd_send.emit(selected_ids, cmd)
 
 下行:
-  EventBus.cmd_send → WebSocketManager._on_cmd_send(vehicle_id, cmd)
-        └── _vehicles[vehicle_id].send(JSON.stringify(cmd))
-              └── 小车收到 cmd
+  cmd_send → KernelBridge._on_cmd_send(targets, cmd)
+    ├─ TASK_SET 且无 members → 按 targets 的 hex_decode 填 members
+    ├─ OrionMessages.Build_Cmd(cmd) → 完整帧（空 sysid + compid=200）
+    └─ for id in targets: kernel.send_command(id, frame)
 ```
 
 ### 车辆注册 / 注销
 
 ```
-hello 包到达
-  └── EventBus.vehicle_registered(vehicle_id, url)
-        ├── WebSocketManager._on_vehicle_registered()
-        │     └── _vehicles[url] → _vehicles[vehicle_id]（key 替换）
-        ├── Renderer2D._on_vehicle_registered()
-        │     └── vehicle_scene.instantiate() → VehicleContainer.add_child()
-        └── VehiclePanelManager._on_vehicle_registered()
-              └── vehicle_panel_scene.instantiate() → add_child()
+peer_connected → vehicle_registered(peer_id)
+    ├─ Renderer2D: vehicle_2d.tscn 实例化 → add_child
+    └─ VehiclePanelManager: vehicle_panel.tscn 实例化 → add_child
 
-连接断开
-  └── EventBus.vehicle_unregistered(vehicle_id)
-        ├── Renderer2D._on_vehicle_unregistered() → queue_free()
-        ├── VehiclePanelManager._on_vehicle_unregistered() → queue_free()
-        │     └── 若 vehicle_id == selected_id → selected_id = ""，FOLLOW → NONE
-        └── Camera._on_vehicle_unregistered(vehicle_id)
-              └── 若跟随后断开 → _state = IDLE
+peer_disconnected → vehicle_unregistered(peer_id)
+    ├─ Renderer2D / VehiclePanelManager: queue_free
+    └─ Camera2D: 若跟随后断开 → IDLE
 ```
 
-## WebSocket
+### Mode 状态机 / 选中车辆
 
-### WebSocketClient
-
-每个小车连接对应一个 WebSocketClient 实例。
-
-- `init(url)` — 设置地址，`_ready()` 自动发起连接
-- `send(msg)` — 发送 JSON 文本帧
-- 消息处理：文本帧 → `MessageParser.parse_json(text)` 解析后按 type 分发；二进制帧 → `MessageParser.parse_binary(pkt)` 解析
-- `hello` 包机制：收到 `hello` 前所有消息丢弃，收到后设 `_identified = true` 并 emit `vehicle_registered`
-- 二进制帧支持：type=0 → map_full（emit `map_full_received`）
-
-### WebSocketManager
-
-总管所有连接，维护 `_vehicles: Dictionary`。
-
-- `create_connection(url)` — 实例化 WebSocketClient，以 `url` 为临时 key 存入 `_vehicles`
-- `close_connection(vehicle_id)` — `queue_free()` 对应 WebSocketClient，emit `vehicle_unregistered`
-- `_on_vehicle_registered(vehicle_id, address)` — 将 `_vehicles[address]` 替换为 `_vehicles[vehicle_id]`
-- `_on_client_disconnected(client)` — 自动清理断开连接
-
-## WebSocket 协议
-
-详见 `docs/websocket_protocol.md`。关键点：
-
-| 项目 | 值 |
-|------|------|
-| 格式 | JSON 文本 + 二进制帧混用 |
-| 连接确认 | `hello` 包（第一帧，必选） |
-| map_full | 二进制帧，65545 bytes（1+4+4+65536） |
-| map_delta | JSON 文本 |
-| pose | JSON 文本 |
-| cmd | JSON 文本，通过 MessageBuilder 构造 |
+- `app_state.mode`（NONE/FOLLOW/GOTO）setter → `mode_transited.emit`，**当前仅 Camera2D 响应**（FOLLOW→跟车，其它→IDLE）。⚠️ GOTO 模式无实际消费方——右键 Goto 由 AutoHandler 直接处理，不检查 `app_state.mode`。
+- 选中：Ctrl+左键点面板（`panel_clicked`）增删 `selected_ids`；面板 Manual CheckButton（`mode_toggled`）维护 `manual_target`（至多 1 辆）+ 下发 manual/auto 切换。
+- `selected_id` = `selected_ids[0]` 的只读计算属性（不 emit `selection_changed`）。
 
 ## 坐标系
 
@@ -347,50 +245,39 @@ hello 包到达
 | 1 tile | 0.5m × 0.5m | 16 像素 |
 | Chunk | 256×256 tile = 128m×128m | — |
 
-坐标转换由 `CoordUtils`（`src/utils/coords.gd`）统一处理：
+`CoordUtils`（`src/utils/coords.gd`）：`real_to_game` / `game_to_real` / `game_to_tile` / `tile_to_game` / `tile_to_real` / `real_to_game_3d`。
 
-```gdscript
-const SCALE := 32.0
-const TILE_SIZE := 16.0
-
-# 真实世界 → Godot 2D
-static func real_to_game(x: float, z: float) -> Vector2
-static func game_to_real(pos: Vector2) -> Dictionary
-
-# tile 网格转换
-static func game_to_tile(world_pos: Vector2) -> Vector2i  # px → tile 网格
-static func tile_to_game(gx: int, gy: int) -> Vector2      # tile → 中心 px
-static func tile_to_real(gx: int, gy: int) -> Vector2      # tile → 米
-
-# Godot 3D
-static func real_to_game_3d(x: float, y: float, z: float) -> Vector3
-```
-
-⚠️ **已知问题**：3D 渲染器（`renderer_3d/`）中硬编码 `SCALE := 16.0`，与 CoordUtils 的 `32.0` 不一致，多车 3D 渲染暂不可用。
+⚠️ 3D 渲染器硬编码 `SCALE := 16.0`，与 CoordUtils 的 `32.0` 不一致（3D 暂不可用）。
 
 ## 多车数据模型
 
-三个总管统一用 `Dictionary{vehicle_id → ...}` 管理各自资源：
+| 组件 | 数据结构 | 说明 |
+|------|---------|------|
+| Renderer2D | `_vehicles: {vehicle_id → Node2D}` | 车辆 Sprite |
+| VehiclePanelManager | `_panels: {vehicle_id → VehiclePanel}` | 车辆面板 |
+| AppStateResource | `selected_ids: Array[String]`、`manual_target: String` | 选中列表 / 手动车 |
+| KernelBridge | （无字典） | Peer 列表由 Rust libp2p swarm 维护 |
 
-```
-WebSocketManager    _vehicles:   {vehicle_id → WebSocketClient}
-Renderer2D          _vehicles:   {vehicle_id → Node2D (Vehicle2D)}
-VehiclePanelManager _panels:     {vehicle_id → VehiclePanel}
-AppStateResource    selected_id: String  ← 当前选中的车辆
-```
-
-车辆生命周期：`ws_connect_requested` → 创建 WebSocketClient → `hello` → `vehicle_registered` → 创建 Sprite + Panel → `disconnect` → `vehicle_unregistered` → 清理全部资源。
+车辆生命周期：`peer_connected` → 创建 Sprite + Panel → 数据流转 → `peer_disconnected` → 清理全部资源。
 
 ## 已知问题
 
 | 严重度 | 问题 | 位置 |
 |--------|------|------|
-| 🔴 | `zoom_changed` 信号未定义 | event_bus.gd / zoom_slider.gd |
-| 🔴 | `voxel_received` 信号未定义 | event_bus.gd / renderer_3d.gd |
-| 🔴 | `path_received` 信号未定义 | event_bus.gd / renderer_3d.gd |
-| 🟡 | SCALE 不一致：3D 渲染器硬编码 16.0 vs CoordUtils 32.0 | renderer_3d/ |
-| 🟡 | GOTO 模式下车辆断开未自动退出 GOTO | vehicle_panel_manager.gd |
-| 🟡 | selection_changed / ws_connected 无人监听 | event_bus.gd |
-| 🟡 | 地图持久化 `_save_chunk` 调用被注释 | map_data_2d.gd |
-| 🟢 | 三处重复的 cell 统计 DEBUG 代码 | ws_client / map_data_2d / renderer_2d |
-| 🟢 | help_label 文本过时，未提及 Lock Camera / Goto | help_label.gd |
+| 🔴 | `zoom_changed`/`voxel_received`/`path_received` 信号引用但未定义 | zoom_slider.gd / renderer_3d.gd |
+| 🔴 | DeepSeek API Key 明文硬编码 | src/util/llm.tscn |
+| 🟡 | `map_delta_received` 无 vehicle_id（多车增量无法区分来源） | event_bus.gd / kernel_bridge.gd |
+| 🟡 | `selection_changed` 孤儿信号（无收发） | event_bus.gd |
+| 🟡 | renderer_3d 未接入 + SCALE=16 与 CoordUtils=32 不一致 | renderer_3d/ |
+| 🟡 | ui.tscn/ui.gd 未使用（ZoomSlider/HelpLabel 永不实例化） | src/ui/ |
+| 🟡 | Mode.GOTO 形同虚设（右键 Goto 不检查 mode） | auto_handler.gd |
+| 🟡 | 地图持久化关闭（`_save_chunk` 注释，`load_chunk` 无调用者） | map_data_2d.gd |
+| 🟡 | audio_input 写 `res://recordings/`（导出后只读，应 user://） | audio_input.gd |
+| 🟡 | auto_handler `get_node("../../Util")` 直连（违反规范，应 @export/EventBus） | auto_handler.gd |
+| 🟡 | `parse_json`/`MSG_HELLO` 死代码（JSON 握手整套残留） | message_parser.gd / protocol_def.gd |
+| 🟢 | menu.gd 未接入；path_line_2d 未实例化 | src/main/、renderer_2d/ |
+| 🟢 | main.tscn 残留 `.tmp` 编辑器临时文件 | src/main/ |
+| 🟢 | kernel_test/pictor_kernel.gdextension.uid 孤儿 UID 文件 | kernel_test/ |
+| 🟢 | help_label 文本过时（未提 Lock Camera/Goto/LLM/Circle） | help_label.gd |
+| 🟢 | 文件头归属注释不统一（"Presented" vs "Present"） | 多处 |
+| 🟢 | tool/gen_chunk_0_0.gd 内 1 处硬编码 `load("res://...")` | tool/ |

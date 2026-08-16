@@ -68,6 +68,14 @@ static func build_auto_push_goto(x: float, y: float) -> Dictionary:
 	}
 
 
+## Circle 群发：x/y = 圆心（世界坐标，米）；半径车端写死 0.5m 不进协议
+static func build_auto_push_circle(x: float, y: float) -> Dictionary:
+	return {
+		"msgid": ProtocolDef.MSGID_TASK_SET,
+		"missions": [{"type": ProtocolDef.MISSION_TYPE_CIRCLE, "x": x, "y": y}],
+	}
+
+
 ## 一次下发多条任务（LLM 指令聚合用），整体替换语义
 ## mission type 归一化：LLM 输出字符串 "goto" → 整数 MISSION_TYPE_GOTO（防御性）
 static func build_task_set(missions: Array) -> Dictionary:
@@ -82,9 +90,7 @@ static func build_task_set(missions: Array) -> Dictionary:
 
 
 static func _Normalize_Mission_Type(t) -> int:
-	if t is String:
-		return ProtocolDef.MISSION_TYPE_GOTO
-	return int(t)
+	return ProtocolDef.Mission_Type_From(t)
 
 
 ## count = 0 → 取消全部任务，停车待命

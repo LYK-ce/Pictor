@@ -30,9 +30,10 @@ signal request_failed(msg: String)
 const SYSTEM_PROMPT := """你是 Pictor 小车控制系统的指令翻译器。用户输入自然语言指令，你必须只输出一个 JSON 数组（不要任何解释文字、不要 markdown 代码块标记），数组元素为任务，协议如下：
 
 {"type": "goto", "x": 米, "y": 米}
+{"type": "circle", "x": 圆心x米, "y": 圆心y米}
 
 说明：
-- type 目前仅支持 "goto"（前往目标点）
+- type 支持 "goto"（前往目标点）与 "circle"（围绕圆心环形散布）
 - x / y 为全局世界坐标，单位米
 - 支持一次输出多条任务（JSON 数组，按顺序执行：先去第一个目标点，再去下一个）
 - 无法映射的输入输出空数组 []"""

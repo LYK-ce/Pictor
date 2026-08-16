@@ -14,7 +14,7 @@ extends Node2D
 @onready var util := get_node("../../Util") as Util
 
 # 瞬态命令扩展点：点按钮进入等待态，执行完自动回 NONE
-enum PendingAction { NONE, PATROL }
+enum PendingAction { NONE, PATROL, CIRCLE }
 var _pending_action := PendingAction.NONE
 
 
@@ -64,6 +64,18 @@ func _on_request_failed(msg: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Z 键进入 Circle 待命；Esc 取消待命
+	if event is InputEventKey:
+		var ke := event as InputEventKey
+		if ke.pressed and not ke.echo:
+			if ke.keycode == KEY_Z:
+				_pending_action = PendingAction.CIRCLE
+				get_viewport().set_input_as_handled()
+			elif ke.keycode == KEY_ESCAPE and _pending_action != PendingAction.NONE:
+				_pending_action = PendingAction.NONE
+				get_viewport().set_input_as_handled()
+		return
+
 	if not event is InputEventMouseButton:
 		return
 	var mb := event as InputEventMouseButton
@@ -99,5 +111,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _execute_pending(_mb: InputEventMouseButton) -> void:
-	# PATROL 等瞬态命令的扩展点：坐标转换 + 广播
-	pass
+	if _pending_action != PendingAction.CIRCLE:
+		return  # PATROL 等其它瞬态命令扩展点
+	if app_state.selected_ids.is_empty():
+		return
+	var mouse_pos := get_global_mouse_position()
+	var tile := CoordUtils.game_to_tile(mouse_pos)
+	var real := CoordUtils.tile_to_real(tile.x, tile.y)
+	EventBus.cmd_send.emit(app_state.selected_ids, MessageBuilder.build_auto_push_circle(real.x, real.y))
+	EventBus.goto_issued.emit(real.x, real.y)  # 圆心高亮（复用 Goto 高亮框）
