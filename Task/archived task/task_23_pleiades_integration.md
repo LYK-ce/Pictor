@@ -1,7 +1,7 @@
 # Task 23: Pleiades 集成（逻辑与表现分离）
 
 > 创建日期：2026-08-15
-> 状态：🟡 方案已定稿（含复核修正），待实施 P3
+> 状态：✅ 已实施 + 测试通过（2026-08-16）
 > 前身：task_23_websocket_reconnect（已重定向——WebSocket 重连方案作废）
 > 复核：`docs/design_review.md`（2026-08-16，14 问题 2🔴6🟡6🟢，已全部定案）
 
@@ -229,6 +229,14 @@ Step 3 必须先于 Step 1 的「删 map_merged」；Step 4 依赖 Step 2（sysi
 - 多车地图一致性（CRDT 调研）：⏸️ 暂缓（多车合并暂缓）
 - Rust 契约文档 `docs/design_doc/pictor_bridge_sync.md`：kernel_ready 门控表述与决策 #4 冲突，需同步修正（以决策 #4 为准）
 
+## 实施结果（2026-08-16）
+
+- ✅ P0-P3 完成：Rust 桥（哑管道）+ Godot 侧切桥（KernelBridge）
+- ✅ Linux headless 验证通过（场景加载 + 内核 bootstrap + 信号连接）；Windows 真机测试通过（用户验证）
+- 🐛 踩坑：Windows `.dll` 依赖 CUDA（`pleiades` 默认 cuda feature 链了 `curand64_10.dll`=CUDA10，与本机 12.8 不匹配 → Error 126）；关闭 cuda feature（`default-features = false`）重编解决
+- `.gdextension` 置于项目根 `res://pictor_kernel.gdextension`（含 linux+windows 条目）；二进制放 `kernel_test/bin/`（gitignore，不提交）
+- ⏸️ P4（e2e + 断线重连）后置：真车/模拟节点到位再验
+
 ## 待办
 
 - [x] 架构收敛（逻辑/表现分离 + 移除 WS）
@@ -236,5 +244,5 @@ Step 3 必须先于 Step 1 的「删 map_merged」；Step 4 依赖 Step 2（sysi
 - [x] 桥接入调研 → `docs/bridge_integration_plan.md`
 - [x] 方案复核 → `docs/design_review.md`（14 问题，已定修复方案）
 - [x] 拍板「待决策问题」第 1-8 项
-- [x] P3 实施（Step 1-10 完成，headless 验证通过：场景加载 + 内核 bootstrap + 信号连接；端到端 Goto 待 P4 真车联调）
-- [ ] P4 e2e + 断线重连验证（联调方案后定）
+- [x] P3 实施（Step 1-10 完成；Linux headless + Windows 真机测试均通过）
+- [ ] P4 e2e + 断线重连验证（⏸️ 后置：真车/模拟节点到位再验）
