@@ -3,6 +3,7 @@ __pycache__/
 .zgent/
 uploads/
 export/
+bin/
 kernel_test/
 .config/
 Log/

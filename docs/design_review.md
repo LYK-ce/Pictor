@@ -146,7 +146,7 @@
 
 #### G5. `.gdextension` 部署位置
 
-- 位置：`kernel_test/pictor_kernel.gdextension`（`res://kernel_test/bin/libpictor_kernel.so`）
+- 位置：`pictor_kernel.gdextension`（`res://bin/libpictor_kernel.so`）
 - 核实：`kernel_test/` 在 `res://` 内且无独立 `project.godot`，Godot 启动会自动扫描全部 `.gdextension`，故扩展**当前已可被发现**；`entry_symbol="gdext_rust_init"` 与 `lib.rs` 的 `#[gdextension]` 默认入口一致。
 - 建议：移动到 `addons/pictor_kernel/` 或 `bin/` 属清理而非功能必需；移动时同步 `.gdextension` 内 `.so` 路径即可，`project.godot` 无需注册。
 

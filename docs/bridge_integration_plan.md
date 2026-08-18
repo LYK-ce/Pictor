@@ -124,7 +124,7 @@ Godot 进程（单进程）
 
 ## 8. 部署注意
 
-- `.gdextension` 已置于项目根 `res://pictor_kernel.gdextension`（含 linux + windows 条目）；二进制产物 `.so`/`.dll` 放 `kernel_test/bin/`（gitignore，不提交）。
+- `.gdextension` 已置于项目根 `res://pictor_kernel.gdextension`（含 linux + windows 条目）；二进制产物 `.so`/`.dll` 放 `bin/`（gitignore，不提交）。
 - `MessageParser.parse_json` 的 hello 处理变死代码（hello 握手已由 `peer_connected` 取代），可清理。
 
 ---
