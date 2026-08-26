@@ -36,7 +36,7 @@ static func parse_json(text: String) -> Dictionary:
 ## 解析 Orion 帧，按 msgid 分发为结构化结果，并透传 sysid（车辆身份来源）。
 ## 返回: { ok: bool, msgid: int, sysid: PackedByteArray, data: Dictionary, error: String }
 ## data 按消息类型填充：
-##   MSGID_POSE     → { time_boot_ms, x, y, vx, vy, yaw, valid, sub_gx, sub_gy }
+##   MSGID_POSE     → { time_boot_ms, x, y, z, vx, vy, yaw, valid, sub_gx, sub_gy }
 ##   MSGID_MAP_FULL → { chunk_x, chunk_y, cells, width, height, resolution }
 ##   MSGID_MAP_DELTA→ { voxels: [{gx, gy, delta}] }（delta 为 i8 差分，累加式）
 static func parse_orion_frame(pkt: PackedByteArray) -> Dictionary:

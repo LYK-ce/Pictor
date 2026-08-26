@@ -15,6 +15,7 @@ func _init() -> void:
 	ok = ok and _test_map_full()
 	ok = ok and _test_map_delta()
 	ok = ok and _test_manual_control()
+	ok = ok and _test_takeoff_land()
 	ok = ok and _test_task_set()
 	ok = ok and _test_build_cmd()
 	ok = ok and _test_parser_dispatch()
@@ -67,23 +68,25 @@ func _test_frame() -> bool:
 
 
 func _test_pose() -> bool:
-	# v2：33B，含 valid/sub_gx/sub_gy 意图字段
-	var payload := OrionMessages.Encode_Pose(12345, 1.5, -2.25, 0.1, -0.2, 0.785, true, 10, -20)
-	if payload.size() != 33:
+	# v3：37B，含 z 高度 + valid/sub_gx/sub_gy 意图字段
+	var payload := OrionMessages.Encode_Pose(12345, 1.5, -2.25, 0.1, -0.2, 0.785, true, 10, -20, 3.5)
+	if payload.size() != 37:
 		print("FAIL pose size: ", payload.size()); return false
 	var dec := OrionMessages.Decode_Pose(payload)
 	if not dec.ok:
 		print("FAIL pose decode: ", dec.error); return false
 	if dec.time_boot_ms != 12345 or absf(dec.x - 1.5) > 0.0001 or absf(dec.y - (-2.25)) > 0.0001:
 		print("FAIL pose fields: ", dec); return false
+	if absf(dec.z - 3.5) > 0.0001:
+		print("FAIL pose z field: ", dec); return false
 	if absf(dec.vx - 0.1) > 0.0001 or absf(dec.vy - (-0.2)) > 0.0001 or absf(dec.yaw - 0.785) > 0.0001:
 		print("FAIL pose fields2: ", dec); return false
 	if dec.valid != true or dec.sub_gx != 10 or dec.sub_gy != -20:
 		print("FAIL pose intent fields: ", dec); return false
-	# 24B 旧帧应被拒绝（v2 严格校验，对齐 Rust）
+	# 33B 旧帧应被拒绝（v3 严格校验，对齐 Rust）
 	var old_payload := OrionMessages.Encode_Pose(0, 0, 0, 0, 0, 0)
-	if OrionMessages.Decode_Pose(old_payload.slice(0, 24)).ok:
-		print("FAIL 24B old pose accepted"); return false
+	if OrionMessages.Decode_Pose(old_payload.slice(0, 33)).ok:
+		print("FAIL 33B old pose accepted"); return false
 	print("PASS pose"); return true
 
 
@@ -150,6 +153,27 @@ func _test_manual_control() -> bool:
 	if not dec.ok or dec.action != 4 or dec.param != -50:
 		print("FAIL manual_control: ", dec); return false
 	print("PASS manual_control"); return true
+
+
+# ─── Task 25：takeoff/land 手动命令（无人机，param 忽略）────────
+func _test_takeoff_land() -> bool:
+	var takeoff := MessageBuilder.build_manual_action("takeoff")
+	if takeoff.action != ProtocolDef.ACTION_TAKEOFF:
+		print("FAIL takeoff action: ", takeoff); return false
+	var land := MessageBuilder.build_manual_action("land")
+	if land.action != ProtocolDef.ACTION_LAND:
+		print("FAIL land action: ", land); return false
+	if ProtocolDef.ACTION_TAKEOFF != 10 or ProtocolDef.ACTION_LAND != 11:
+		print("FAIL takeoff/land const value"); return false
+	var payload := OrionMessages.Encode_Manual_Control(ProtocolDef.ACTION_TAKEOFF, 0)
+	var dec := OrionMessages.Decode_Manual_Control(payload)
+	if not dec.ok or dec.action != 10 or dec.param != 0:
+		print("FAIL takeoff roundtrip: ", dec); return false
+	var payload2 := OrionMessages.Encode_Manual_Control(ProtocolDef.ACTION_LAND, 0)
+	var dec2 := OrionMessages.Decode_Manual_Control(payload2)
+	if not dec2.ok or dec2.action != 11:
+		print("FAIL land roundtrip: ", dec2); return false
+	print("PASS takeoff_land"); return true
 
 
 func _test_task_set() -> bool:
@@ -502,6 +526,10 @@ func _test_endianness() -> bool:
 	var pose := OrionMessages.Encode_Pose(0, 1.5, 0.0, 0.0, 0.0, 0.0)
 	if pose.slice(4, 8) != PackedByteArray([0x3F, 0xC0, 0x00, 0x00]):
 		print("FAIL pose float BE: ", pose.slice(4, 8)); return false
+	# 3b) pose z 大端：z=3.5 → 0x40600000 → [40 60 00 00] @offset 12
+	var pose_z := OrionMessages.Encode_Pose(0, 0.0, 0.0, 0.0, 0.0, 0.0, false, 0, 0, 3.5)
+	if pose_z.slice(12, 16) != PackedByteArray([0x40, 0x60, 0x00, 0x00]):
+		print("FAIL pose z float BE: ", pose_z.slice(12, 16)); return false
 
 	# 4) map_full resolution 0.5 → 0x3F000000；origin_gx=-256 → [FF FF FF 00]
 	var mf := OrionMessages.Encode_Map_Full(0, -256, 256, 256, 256, 0.5, PackedByteArray())

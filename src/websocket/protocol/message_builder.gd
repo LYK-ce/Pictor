@@ -18,6 +18,8 @@ const _ACTION_STR_TO_ENUM := {
 	"spin_right": ProtocolDef.ACTION_SPIN_RIGHT,
 	"stop": ProtocolDef.ACTION_STOP,
 	"beep": ProtocolDef.ACTION_BEEP,
+	"takeoff": ProtocolDef.ACTION_TAKEOFF,
+	"land": ProtocolDef.ACTION_LAND,
 }
 
 

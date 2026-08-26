@@ -13,6 +13,8 @@ const _KEY_MAP := {
 	KEY_A: "spin_left",
 	KEY_D: "spin_right",
 	KEY_SPACE: "stop",
+	KEY_E: "takeoff",
+	KEY_Q: "land",
 }
 
 

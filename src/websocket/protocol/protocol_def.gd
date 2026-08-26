@@ -35,8 +35,10 @@ const ACTION_START_LIDAR := 6
 const ACTION_STOP_LIDAR := 7
 const ACTION_SWITCH_TO_MANUAL := 8
 const ACTION_SWITCH_TO_AUTO := 9
+const ACTION_TAKEOFF := 10   # Task 25：起飞（无人机，param 忽略，固定 1.8m）
+const ACTION_LAND := 11      # Task 25：降落（无人机，param 忽略）
 
-const MANUAL_DEFAULT_SPEED := 50
+const MANUAL_DEFAULT_SPEED := 50   # Task 25：车端已忽略速度档位（forward/backward/spin），仅 beep 时长 param 生效
 
 
 # ─── ORION_TASK_SET mission type ─────────────────────────────

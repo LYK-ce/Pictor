@@ -96,10 +96,11 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 		return
 	var x: float = pose.get("x", 0.0)
 	var y: float = pose.get("y", 0.0)
+	var z: float = pose.get("z", 0.0)
 	var yaw: float = pose.get("yaw", 0.0)
 	var vx: float = pose.get("vx", 0.0)
 	var vy: float = pose.get("vy", 0.0)
-	panel.Update(vehicle_id, "%.1f, %.1f" % [x, y], "%.1f°" % rad_to_deg(yaw), "%.1f, %.1f" % [vx, vy])
+	panel.Update(vehicle_id, "%.1f, %.1f, %.1f" % [x, y, z], "%.1f°" % rad_to_deg(yaw), "%.1f, %.1f" % [vx, vy])
 
 
 func _update_selection() -> void:
