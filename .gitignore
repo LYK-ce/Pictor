@@ -6,4 +6,6 @@ export/
 bin/
 kernel_test/
 .config/
+.kvcache/
 Log/
+recordings/
