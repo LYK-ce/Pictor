@@ -32,6 +32,8 @@ var _current_tile: Vector2i  # 当前请求的瓦片坐标
 
 func _ready() -> void:
 	_http.request_completed.connect(_on_request_completed)
+	# 卫星图被放大 ~15 倍显示，用最近邻过滤保持边缘锐利（线性过滤会显糊）
+	_chunk.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	# 临时：测试用，直接拉默认坐标（测试通过后删除该调用）
 	load_satellite(DEFAULT_LAT, DEFAULT_LON)
 
