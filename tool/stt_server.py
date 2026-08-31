@@ -30,7 +30,7 @@ from fastapi import FastAPI
 from faster_whisper import WhisperModel
 
 # ===== 配置 =====
-MODEL_SIZE = "medium"   # 可改 "large-v3"（更准但吃显存，约 3GB）
+MODEL_SIZE = os.path.join(os.path.dirname(__file__), "model")   # 本地模型目录 tool/model/；无本地模型时改回 "medium" 自动下载
 LANGUAGE = "zh"         # 识别语言；改 None 则自动检测
 BEAM_SIZE = 5           # 越大越准但越慢
 HOST = "127.0.0.1"

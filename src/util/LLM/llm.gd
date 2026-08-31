@@ -2,10 +2,8 @@
 ## Date ： 2026-08-04
 ##
 ## LLM — 自然语言指令翻译工具
-## 阶段一：仅调用 API 并将返回结果 print 出来验证链路，不下发任何指令。
-## 用法：util.llm.generate_cmds("前进三米然后左转")
-##   → print 原始响应 + 解析出的 cmd 数组
-## 阶段二：解析结果经 EventBus.cmd_send 广播给选中车辆。
+## 输入：用户自然语言 + 车辆上下文（由 AutoHandler 拼好传入）
+## 输出：带 vehicle 字段的多指令数组（Task 27 按车分发）
 
 class_name LLM
 extends Node
@@ -27,15 +25,16 @@ signal request_failed(msg: String)
 @onready var _http := $HTTPRequest
 
 ## 系统提示词：约束 LLM 输出为任务序列（missions JSON 数组）
-const SYSTEM_PROMPT := """你是 Pictor 小车控制系统的指令翻译器。用户输入自然语言指令，你必须只输出一个 JSON 数组（不要任何解释文字、不要 markdown 代码块标记），数组元素为任务，协议如下：
+const SYSTEM_PROMPT := """你是 Pictor 多车控制系统的指令翻译器。用户输入自然语言指令，你必须只输出一个 JSON 数组（不要任何解释文字、不要 markdown 代码块标记），数组元素为分发给单辆车的任务，协议如下：
 
-{"type": "goto", "x": 米, "y": 米}
-{"type": "circle", "x": 圆心x米, "y": 圆心y米}
+{"vehicle": "车名", "type": "goto", "x": 米, "y": 米}
+{"vehicle": "车名", "type": "circle", "x": 圆心x米, "y": 圆心y米}
 
 说明：
+- vehicle 必须是「当前在线车辆」列表里给出的车名，一字不差
 - type 支持 "goto"（前往目标点）与 "circle"（围绕圆心环形散布）
 - x / y 为全局世界坐标，单位米
-- 支持一次输出多条任务（JSON 数组，按顺序执行：先去第一个目标点，再去下一个）
+- 每辆车可分配 0 条或多条任务，可一次给多辆车下发
 - 无法映射的输入输出空数组 []"""
 
 

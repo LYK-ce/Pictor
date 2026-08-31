@@ -4,11 +4,13 @@ extends Node2D
 ##
 ## AutoHandler — 自动控制编排：
 ## 1. 右键 Goto 广播给 selected_ids（原有）
-## 2. LLM 指令编排：监听 EventBus.command_requested → 调 util.llm.generate_cmds
-##    → 接收 cmds_generated → 广播下发（与 Goto 同层）
+## 2. LLM 指令编排：监听 EventBus.command_requested → 拼车辆上下文 → 调 util.llm.generate_cmds
+##    → 接收 cmds_generated → 按车分发（Task 27）
 ## 瞬态态：点命令按钮（如巡逻）后等待目标点，左键执行 / 右键取消
 
 @export var app_state: AppStateResource
+## 车辆注册表（拼 LLM 上下文 + 车名→id 映射）
+@export var vehicle_registry: VehicleRegistry
 
 ## 工具箱引用（运行时获取，Main/Util）
 @onready var util := get_node("../../Util") as Util
@@ -32,30 +34,46 @@ func _connect_llm_signals() -> void:
 	util.llm.request_failed.connect(_on_request_failed)
 
 
-## 收到 TextInput 等输入源的指令请求 → 调用 LLM 翻译
+## 收到 TextInput/STT 等输入源的指令请求 → 拼车辆上下文 → 调 LLM 翻译
 func _on_command_requested(text: String) -> void:
 	if util == null or util.llm == null:
 		printerr("[AutoHandler] util/llm 不可用")
 		return
-	util.llm.generate_cmds(text)
+	util.llm.generate_cmds(_build_context(text))
 
 
-## LLM 翻译成功 → 广播下发（空数组 / 未选中车辆时不下发，仅日志）
-## LLM 输出为任务序列（missions JSON 数组）：所有任务合并为一条 TASK_SET 整体下发
-## mission type 归一化（字符串 "goto" → 0）在 MessageBuilder.build_task_set 内
-## 注意：取消（count=0）由 UI 显式触发；LLM 输出空数组表示"无任务"，不下发
+## 从车辆注册表拼「车辆列表 + 用户指令」上下文
+func _build_context(user_text: String) -> String:
+	var lines := PackedStringArray()
+	lines.append("当前在线车辆：")
+	if vehicle_registry == null or vehicle_registry.vehicles.is_empty():
+		lines.append("（无）")
+	else:
+		for id: String in vehicle_registry.vehicles:
+			var v: Dictionary = vehicle_registry.vehicles[id]
+			lines.append("- %s，位置 (%.1f, %.1f)" % [
+				str(v.get("name", id)), float(v.get("x", 0.0)), float(v.get("y", 0.0))])
+	lines.append("")
+	lines.append("用户指令：" + user_text)
+	return "\n".join(lines)
+
+
+## LLM 翻译成功 → 按车分发（Task 27：mock 阶段先打印，后续改 cmd_send 逐条下发）
 func _on_cmds_generated(cmds: Array) -> void:
 	if cmds.is_empty():
-		print("[AutoHandler] LLM 无有效指令，不下发")
+		print("[AutoHandler] LLM 无有效指令")
 		return
-	if app_state.selected_ids.is_empty():
-		print("[AutoHandler] 未选中车辆，指令不下发")
-		return
-
-	# Task 22：对选中车群发（单条 TASK_SET，members 由 WebSocketManager 按 targets 填充）
-	var task_set := MessageBuilder.build_task_set(cmds)
-	EventBus.cmd_send.emit(app_state.selected_ids, task_set)
-	print("[LLM] → ", app_state.selected_ids, ": TASK_SET x", cmds.size())
+	for cmd in cmds:
+		if not cmd is Dictionary:
+			continue
+		var vehicle_name: String = str(cmd.get("vehicle", ""))
+		var vehicle_id := ""
+		if vehicle_registry:
+			vehicle_id = vehicle_registry.get_id_by_name(vehicle_name)
+		print("[LLM] → %s (%s): %s(%.1f, %.1f)" % [
+			vehicle_name, vehicle_id,
+			str(cmd.get("type", "")),
+			float(cmd.get("x", 0.0)), float(cmd.get("y", 0.0))])
 
 
 ## LLM 请求失败 → 仅日志

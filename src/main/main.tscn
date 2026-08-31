@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://src/util/util.tscn" id="8_util"]
 [ext_resource type="PackedScene" uid="uid://bfn0swf4nchu1" path="res://src/ui/text_input.tscn" id="8_w0wra"]
 [ext_resource type="PackedScene" uid="uid://ci3b8tr6nfigl" path="res://src/ui/scaler/scale.tscn" id="11_scale"]
+[ext_resource type="PackedScene" path="res://src/vehicle_registry/vehicle_registry.tscn" id="12_vreg"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
@@ -38,3 +39,5 @@ script = ExtResource("4_kb")
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
 
 [node name="Util" parent="." unique_id=1916934973 instance=ExtResource("8_util")]
+
+[node name="VehicleRegistry" parent="." instance=ExtResource("12_vreg")]

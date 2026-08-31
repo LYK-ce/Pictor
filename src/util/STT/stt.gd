@@ -59,6 +59,8 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 		printerr("[STT] 未识别出文本")
 		return
 	print("[STT] 识别结果: ", text)
+	# 阶段二：识别文本接入 LLM（与文字输入同一入口）
+	EventBus.command_requested.emit(text)
 
 
 ## 解析 JSON 响应 → text（busy/error 返回空并打印提示）
