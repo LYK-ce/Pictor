@@ -45,20 +45,21 @@ func _on_command_requested(text: String) -> void:
 ## 从车辆注册表拼「车辆列表 + 用户指令」上下文
 func _build_context(user_text: String) -> String:
 	var lines := PackedStringArray()
-	lines.append("当前在线车辆：")
+	lines.append("当前在线车辆（位置与朝向，朝向单位度，0=正北，90=正东）：")
 	if vehicle_registry == null or vehicle_registry.vehicles.is_empty():
 		lines.append("（无）")
 	else:
 		for id: String in vehicle_registry.vehicles:
 			var v: Dictionary = vehicle_registry.vehicles[id]
-			lines.append("- %s，位置 (%.1f, %.1f)" % [
-				str(v.get("name", id)), float(v.get("x", 0.0)), float(v.get("y", 0.0))])
+			lines.append("- %s，位置 (%.1f, %.1f)，朝向 %.0f°" % [
+				str(v.get("name", id)), float(v.get("x", 0.0)), float(v.get("y", 0.0)),
+				rad_to_deg(float(v.get("yaw", 0.0)))])
 	lines.append("")
 	lines.append("用户指令：" + user_text)
 	return "\n".join(lines)
 
 
-## LLM 翻译成功 → 按车分发（Task 27：mock 阶段先打印，后续改 cmd_send 逐条下发）
+## LLM 翻译成功 → 按车分发（车名→vehicle_id 映射 + 逐条 cmd_send 下发）
 func _on_cmds_generated(cmds: Array) -> void:
 	if cmds.is_empty():
 		print("[AutoHandler] LLM 无有效指令")
@@ -70,6 +71,16 @@ func _on_cmds_generated(cmds: Array) -> void:
 		var vehicle_id := ""
 		if vehicle_registry:
 			vehicle_id = vehicle_registry.get_id_by_name(vehicle_name)
+		if vehicle_id.is_empty():
+			printerr("[AutoHandler] 车名未找到，跳过: ", vehicle_name)
+			continue
+		var mission := {
+			"type": str(cmd.get("type", "goto")),
+			"x": float(cmd.get("x", 0.0)),
+			"y": float(cmd.get("y", 0.0)),
+		}
+		var task_set := MessageBuilder.build_task_set([mission])
+		EventBus.cmd_send.emit([vehicle_id] as Array[String], task_set)
 		print("[LLM] → %s (%s): %s(%.1f, %.1f)" % [
 			vehicle_name, vehicle_id,
 			str(cmd.get("type", "")),
