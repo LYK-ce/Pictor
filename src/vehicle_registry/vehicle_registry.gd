@@ -22,6 +22,7 @@ func _ready() -> void:
 	EventBus.pose_received.connect(_on_pose)
 	if MOCK_ENABLED:
 		_add_mock_vehicles()
+		print("[VehicleRegistry] mock 车辆已注册: ", vehicles.keys())
 
 
 func _on_vehicle_registered(vehicle_id: String) -> void:

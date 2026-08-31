@@ -12,6 +12,5 @@
 [node name="AutoHandler" type="Node2D" parent="." unique_id=1657030304]
 script = ExtResource("4_ff5ov")
 app_state = ExtResource("2_2pep6")
-vehicle_registry = NodePath("../../VehicleRegistry")
 
 [node name="AudioInput" parent="." unique_id=1964459241 instance=ExtResource("5_ai")]

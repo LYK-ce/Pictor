@@ -9,11 +9,11 @@ extends Node2D
 ## 瞬态态：点命令按钮（如巡逻）后等待目标点，左键执行 / 右键取消
 
 @export var app_state: AppStateResource
-## 车辆注册表（拼 LLM 上下文 + 车名→id 映射）
-@export var vehicle_registry: VehicleRegistry
 
 ## 工具箱引用（运行时获取，Main/Util）
 @onready var util := get_node("../../Util") as Util
+## 车辆注册表（运行时获取，Main/VehicleRegistry；拼 LLM 上下文 + 车名→id 映射）
+@onready var vehicle_registry := get_node("../../VehicleRegistry") as VehicleRegistry
 
 # 瞬态命令扩展点：点按钮进入等待态，执行完自动回 NONE
 enum PendingAction { NONE, PATROL, CIRCLE }
