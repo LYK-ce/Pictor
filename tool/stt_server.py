@@ -19,6 +19,10 @@
 #   - 模型首次启动时加载；音频重采样（44.1kHz/stereo → 16kHz/mono）由 faster-whisper 内部自动完成。
 #   - 本服务只跑模型，不做任何下游（文本由 Godot 端打印）。
 
+import os
+
+# Windows 上 faster-whisper + onnxruntime 会重复加载 OpenMP（libiomp5md.dll），提前容忍避免崩溃
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import base64
 import io
 
