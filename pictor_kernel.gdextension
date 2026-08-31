@@ -3,7 +3,7 @@ entry_symbol = "gdext_rust_init"
 compatibility_minimum = "4.7"
 
 [libraries]
-linux.debug.x86_64 = "res://bin/libpictor_kernel.so"
-linux.release.x86_64 = "res://bin/libpictor_kernel.so"
-windows.debug.x86_64 = "res://bin/pictor_kernel.dll"
-windows.release.x86_64 = "res://bin/pictor_kernel.dll"
+linux.debug.x86_64 = "res://bin/libpleiades_terminal.so"
+linux.release.x86_64 = "res://bin/libpleiades_terminal.so"
+windows.debug.x86_64 = "res://bin/pleiades_terminal.dll"
+windows.release.x86_64 = "res://bin/pleiades_terminal.dll"
