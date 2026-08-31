@@ -20,7 +20,7 @@ signal request_failed(msg: String)
 ## 模型名（DeepSeek 官方示例：deepseek-v4-pro；flash 版为 deepseek-v4-flash）
 @export var model := "deepseek-v4-pro"
 ## 请求超时（秒）
-@export var timeout := 15.0
+@export var timeout := 120.0
 
 @onready var _http := $HTTPRequest
 
@@ -57,7 +57,7 @@ func generate_cmds(text: String) -> void:
 		],
 		"stream": false,
 		"thinking": {"type": "enabled"},
-		"reasoning_effort": "high",
+		"reasoning_effort": "medium",
 	}
 	var headers := [
 		"Content-Type: application/json",
