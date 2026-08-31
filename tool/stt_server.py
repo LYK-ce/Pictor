@@ -31,6 +31,8 @@ LANGUAGE = "zh"         # 识别语言；改 None 则自动检测
 BEAM_SIZE = 5           # 越大越准但越慢
 HOST = "127.0.0.1"
 PORT = 9881
+DEVICE = "cpu"         # "cpu" 或 "cuda"；cuda 需装 CUDA 12 + cuDNN
+COMPUTE_TYPE = "int8"  # cpu 用 int8；cuda 建议 "float16"
 # =================
 
 app = FastAPI()
@@ -40,10 +42,10 @@ _busy = False
 
 
 def get_model() -> WhisperModel:
-    """懒加载模型；device="auto" 自动选 GPU/CPU，compute_type 默认（GPU float16 / CPU int8）。"""
+    """懒加载模型。默认 CPU（int8）；用 GPU 需装 CUDA 12 + cuDNN，并把 DEVICE 改 "cuda"、COMPUTE_TYPE 改 "float16"。"""
     global _model
     if _model is None:
-        _model = WhisperModel(MODEL_SIZE, device="auto")
+        _model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
     return _model
 
 
