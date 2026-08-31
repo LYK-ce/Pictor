@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/util/STT/stt.gd" id="1_stt"]
+
+[node name="STT" type="Node"]
+script = ExtResource("1_stt")
+
+[node name="HTTPRequest" type="HTTPRequest" parent="."]

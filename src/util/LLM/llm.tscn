@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bndia1vc5oo3p"]
 
-[ext_resource type="Script" uid="uid://ctfwbid8r21yx" path="res://src/util/llm.gd" id="1_llm"]
+[ext_resource type="Script" uid="uid://ctfwbid8r21yx" path="res://src/util/LLM/llm.gd" id="1_llm"]
 
 [node name="LLM" type="Node" unique_id=435553947]
 script = ExtResource("1_llm")

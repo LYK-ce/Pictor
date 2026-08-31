@@ -10,3 +10,6 @@ extends Node
 
 ## LLM 工具：自然语言 → cmd 指令数组
 @onready var llm: LLM = $LLM
+
+## STT 工具：语音 → 文本
+@onready var stt: STT = $STT

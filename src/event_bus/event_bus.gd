@@ -21,4 +21,6 @@ signal goto_issued(x: float, y: float)
 signal mode_transited(mode: int)
 signal audio_record_started
 signal audio_record_finished
+## 录音结束、内存拼好 wav 后由 AudioInput 发出，STT 接收后上传转录
+signal audio_captured(wav_bytes: PackedByteArray)
 signal command_requested(text: String)
