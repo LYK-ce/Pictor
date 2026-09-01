@@ -1,6 +1,6 @@
 extends Node
 ## Presented by KeJi
-## Date ： 2026-08-16
+## Date ： 2026-09-01
 ##
 ## EventBus — 全局事件总线（Autoload 单例）
 
@@ -11,8 +11,8 @@ signal map_delta_received(voxels: Array)
 signal chunk_updated(chunk_x: int, chunk_y: int)
 signal vehicle_registered(vehicle_id: String)
 signal vehicle_unregistered(vehicle_id: String)
-## 桥透传的节点名（peer_info_updated），面板据此显示车名
-signal peer_info_updated(vehicle_id: String, peer_name: String)
+## 桥透传的节点名 + 节点类型（peer_info_updated），面板据此显示车名与类型
+signal peer_info_updated(vehicle_id: String, peer_name: String, node_type: String)
 signal selection_changed(id: String)
 ## targets = 目标车辆列表（hex vehicle_id）；TASK_SET 的 members 由 KernelBridge 按 targets 填充
 signal cmd_send(targets: Array[String], cmd: Dictionary)

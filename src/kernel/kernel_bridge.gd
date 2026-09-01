@@ -1,6 +1,6 @@
 extends Node
 ## Presented by KeJi
-## Date ： 2026-08-16
+## Date ： 2026-09-01
 ##
 ## KernelBridge — Rust 桥（PleiadesKernel）与 EventBus 的适配器
 ## 上行：robot_frame → parse_orion_frame → EventBus（pose/map）；peer_* → registered/unregistered/name
@@ -81,7 +81,7 @@ func _on_peer_disconnected(peer_id: String) -> void:
 	EventBus.vehicle_unregistered.emit(peer_id)
 
 
-func _on_peer_info_updated(peer_id: String, peer_name: String) -> void:
+func _on_peer_info_updated(peer_id: String, peer_name: String, node_type: String) -> void:
 	if peer_name.is_empty():
 		return  # 空名过滤（models/sessions 也会发 peer_info_updated）
-	EventBus.peer_info_updated.emit(peer_id, peer_name)
+	EventBus.peer_info_updated.emit(peer_id, peer_name, node_type)

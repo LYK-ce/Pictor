@@ -14,6 +14,7 @@ signal mode_toggled(vehicle_id: String, to_manual: bool)
 @onready var _pos_label := $VBoxContainer/Position as Label
 @onready var _vel_label := $VBoxContainer/Velocity as Label
 @onready var _rtk_label := $VBoxContainer/RTK as Label
+@onready var _type_label := $VBoxContainer/Type as Label
 
 ## 车辆身份键（hex peer_id）与显示名分离：显示名会被 peer_info_updated 覆盖，vehicle_id 用于点选/模式切换
 var _vehicle_id := ""
@@ -49,6 +50,11 @@ func set_vehicle_name(peer_name: String) -> void:
 		return
 	_display_name = peer_name
 	_id_label.text = peer_name
+
+
+## 设置节点类型（car/uav/ground_station；空串=未知）
+func set_node_type(node_type: String) -> void:
+	_type_label.text = node_type
 
 
 ## 收到位姿 → 更新 RTK 状态角标（rtk_fixed：true=FIXED，false=失锁/未启用）

@@ -85,10 +85,11 @@ func _on_vehicle_unregistered(vehicle_id: String) -> void:
 		app_state.mode = AppStateResource.Mode.NONE
 
 
-func _on_peer_info_updated(vehicle_id: String, peer_name: String) -> void:
+func _on_peer_info_updated(vehicle_id: String, peer_name: String, node_type: String) -> void:
 	var panel = _panels.get(vehicle_id)
 	if panel:
 		panel.set_vehicle_name(peer_name)
+		panel.set_node_type(node_type)
 
 func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	var panel = _panels.get(vehicle_id)
