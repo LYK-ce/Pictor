@@ -6,6 +6,7 @@ extends Node2D
 ## 组装 MapContainer2D / Vehicle，订阅 EventBus 信号分发。
 
 @export var vehicle_scene: PackedScene
+@export var helicopter_scene: PackedScene   # 无人机 sprite（node_type=uav 时替换）
 
 @onready var _map: Node2D = $MapContainer2D
 @onready var _vehicle_container: Node2D = $VehicleContainer
@@ -29,6 +30,7 @@ func _ready() -> void:
 	EventBus.cells_changed.connect(_on_cells_changed)
 	EventBus.vehicle_registered.connect(_on_vehicle_registered)
 	EventBus.vehicle_unregistered.connect(_on_vehicle_unregistered)
+	EventBus.peer_info_updated.connect(_on_peer_info_updated)
 
 
 func _on_vehicle_registered(vehicle_id: String) -> void:
@@ -50,6 +52,25 @@ func _on_vehicle_unregistered(vehicle_id: String) -> void:
 		instance.queue_free()
 		_vehicles.erase(vehicle_id)
 		print("[Renderer2D] vehicle removed: ", vehicle_id)
+
+
+## 收到节点类型 → 无人机换成直升机 sprite（默认车，其余类型保持默认）
+func _on_peer_info_updated(vehicle_id: String, _peer_name: String, node_type: String) -> void:
+	if node_type != "uav":
+		return
+	var instance: Node2D = _vehicles.get(vehicle_id)
+	if not instance or not helicopter_scene:
+		return
+	if instance.scene_file_path == helicopter_scene.resource_path:
+		return  # 已是直升机，跳过
+	var new_instance := helicopter_scene.instantiate()
+	new_instance.name = vehicle_id
+	new_instance.position = instance.position
+	new_instance.rotation = instance.rotation
+	new_instance.set_color(instance.get_node("AnimatedSprite2D").modulate)  # 保留颜色
+	_vehicle_container.add_child(new_instance)
+	_vehicles[vehicle_id] = new_instance
+	instance.queue_free()
 
 
 func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
