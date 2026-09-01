@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://f3uohh2k2e7y"]
+
+[node name="log" type="PanelContainer" unique_id=616641716]
+anchors_preset = -1
+anchor_left = 0.7
+anchor_top = 0.7
+anchor_right = 0.9
+anchor_bottom = 0.85
+
+[node name="RichTextLabel" type="RichTextLabel" parent="." unique_id=1409965103]
+layout_mode = 2
