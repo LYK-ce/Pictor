@@ -17,6 +17,8 @@ func _ready() -> void:
 	EventBus.peer_info_updated.connect(_on_peer_info_updated)
 	EventBus.pose_received.connect(_on_pose)
 
+	
+
 
 func _on_vehicle_registered(vehicle_id: String) -> void:
 	if vehicles.has(vehicle_id):

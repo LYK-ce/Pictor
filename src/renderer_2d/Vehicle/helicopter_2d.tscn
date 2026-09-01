@@ -1,0 +1,65 @@
+[gd_scene format=3 uid="uid://bhv4qdce086xh"]
+
+[ext_resource type="Script" uid="uid://84bccsksuj0k" path="res://src/renderer_2d/Vehicle/vehicle_2d.gd" id="1_ovc13"]
+[ext_resource type="Texture2D" uid="uid://chwcr2p2241ak" path="res://Assets/2D/helicopter/Helicopter_16x16.png" id="2_ovc13"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_580mm"]
+atlas = ExtResource("2_ovc13")
+region = Rect2(6080, 864, 304, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_67hvq"]
+atlas = ExtResource("2_ovc13")
+region = Rect2(6384, 864, 304, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_orxss"]
+atlas = ExtResource("2_ovc13")
+region = Rect2(6688, 864, 304, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a72qg"]
+atlas = ExtResource("2_ovc13")
+region = Rect2(6992, 864, 304, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1qp3k"]
+atlas = ExtResource("2_ovc13")
+region = Rect2(7296, 864, 304, 288)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_om131"]
+atlas = ExtResource("2_ovc13")
+region = Rect2(7600, 864, 304, 288)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_67hvq"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_580mm")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_67hvq")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_orxss")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_a72qg")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1qp3k")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_om131")
+}],
+"loop": 1,
+"name": &"default",
+"speed": 5.0
+}]
+
+[node name="Vehicle2D" type="Node2D" unique_id=1591744708]
+script = ExtResource("1_ovc13")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1395880036]
+texture_filter = 1
+scale = Vector2(0.5, 0.5)
+sprite_frames = SubResource("SpriteFrames_67hvq")
+autoplay = "default"
+frame = 2
+frame_progress = 0.71500915

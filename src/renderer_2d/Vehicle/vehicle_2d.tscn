@@ -1,8 +1,7 @@
 [gd_scene format=3 uid="uid://uno5uh8ep1ik"]
 
-[ext_resource type="Script" path="res://src/renderer_2d/Vehicle/vehicle_2d.gd" id="1_vehicle_gd"]
-
 [ext_resource type="Texture2D" uid="uid://bmmjk1k0bskso" path="res://Assets/2D/Vehicle/Car_classic_blue_complete_.png" id="1_06gi5"]
+[ext_resource type="Script" uid="uid://84bccsksuj0k" path="res://src/renderer_2d/Vehicle/vehicle_2d.gd" id="1_vehicle_gd"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_5txsu"]
 atlas = ExtResource("1_06gi5")
