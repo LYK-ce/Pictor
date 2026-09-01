@@ -38,7 +38,9 @@ func _connect_llm_signals() -> void:
 func _on_command_requested(text: String) -> void:
 	if util == null or util.llm == null:
 		printerr("[AutoHandler] util/llm 不可用")
+		EventBus.log_message.emit("❌ util/llm 不可用", "error")
 		return
+	EventBus.log_message.emit("🤖 LLM 收到指令：%s" % text, "info")
 	util.llm.generate_cmds(_build_context(text))
 
 
@@ -63,6 +65,7 @@ func _build_context(user_text: String) -> String:
 func _on_cmds_generated(cmds: Array) -> void:
 	if cmds.is_empty():
 		print("[AutoHandler] LLM 无有效指令")
+		EventBus.log_message.emit("⚠️ LLM 无有效指令", "warn")
 		return
 	for cmd in cmds:
 		if not cmd is Dictionary:
@@ -73,6 +76,7 @@ func _on_cmds_generated(cmds: Array) -> void:
 			vehicle_id = vehicle_registry.get_id_by_name(vehicle_name)
 		if vehicle_id.is_empty():
 			printerr("[AutoHandler] 车名未找到，跳过: ", vehicle_name)
+			EventBus.log_message.emit("❌ 车名未找到：%s" % vehicle_name, "error")
 			continue
 		var mission := {
 			"type": str(cmd.get("type", "goto")),
@@ -81,6 +85,7 @@ func _on_cmds_generated(cmds: Array) -> void:
 		}
 		var task_set := MessageBuilder.build_task_set([mission])
 		EventBus.cmd_send.emit([vehicle_id] as Array[String], task_set)
+		EventBus.log_message.emit("📡 下发 → %s：%s" % [vehicle_name, str(cmd.get("type", ""))], "info")
 		print("[LLM] → %s (%s): %s(%.1f, %.1f)" % [
 			vehicle_name, vehicle_id,
 			str(cmd.get("type", "")),

@@ -17,8 +17,8 @@ signal request_failed(msg: String)
 @export var api_url := "https://api.deepseek.com/chat/completions"
 ## API Key（DeepSeek 平台申请，场景面板中填写；为空时跳过调用并提示）
 @export var api_key := ""
-## 模型名（DeepSeek 官方示例：deepseek-v4-pro；flash 版为 deepseek-v4-flash）
-@export var model := "deepseek-v4-pro"
+## 模型名（默认 deepseek-v4-flash；pro 版为 deepseek-v4-pro）
+@export var model := "deepseek-v4-flash"
 ## 请求超时（秒）
 @export var timeout := 120.0
 
@@ -87,7 +87,9 @@ func _save_default_config() -> void:
 func generate_cmds(text: String) -> void:
 	if api_key == "":
 		printerr("[LLM] api_key 未配置，请在场景面板填写 LLM 节点的 api_key 属性")
+		EventBus.log_message.emit("❌ LLM api_key 未配置", "error")
 		return
+	EventBus.log_message.emit("🤖 LLM 翻译中…", "info")
 	var body := {
 		"model": model,
 		"messages": [
@@ -105,21 +107,25 @@ func generate_cmds(text: String) -> void:
 	var err: Error = _http.request(api_url, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
 	if err != OK:
 		printerr("[LLM] 请求发起失败: ", err)
+		EventBus.log_message.emit("❌ LLM 请求发起失败", "error")
 
 
 ## HTTP 回调：解析响应 → print
 func _on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS:
 		printerr("[LLM] 请求失败 result=", result)
+		EventBus.log_message.emit("❌ LLM 请求失败", "error")
 		request_failed.emit("请求失败 result=%d" % result)
 		return
 	if response_code != 200:
 		printerr("[LLM] HTTP ", response_code, ": ", body.get_string_from_utf8())
+		EventBus.log_message.emit("❌ LLM HTTP %d" % response_code, "error")
 		request_failed.emit("HTTP %d" % response_code)
 		return
 	var response = JSON.parse_string(body.get_string_from_utf8())
 	if response == null or not response is Dictionary:
 		printerr("[LLM] 响应不是合法 JSON")
+		EventBus.log_message.emit("❌ LLM 响应不是合法 JSON", "error")
 		request_failed.emit("响应不是合法 JSON")
 		return
 	print(response)
@@ -128,10 +134,12 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 	var cmds = _parse_cmds(content)
 	if cmds == null:
 		printerr("[LLM] 输出解析失败")
+		EventBus.log_message.emit("❌ LLM 输出解析失败", "error")
 		request_failed.emit("LLM 输出解析失败")
 		return
 	print("[LLM] 解析结果: ", cmds)
 	cmds_generated.emit(cmds)
+	EventBus.log_message.emit("✅ LLM 输出：%s" % str(cmds), "info")
 
 
 ## 解析 LLM 输出 → cmd 数组（先试直接 JSON，失败再提取 ```json 代码块）

@@ -24,3 +24,5 @@ signal audio_record_finished
 ## 录音结束、内存拼好 wav 后由 AudioInput 发出，STT 接收后上传转录
 signal audio_captured(wav_bytes: PackedByteArray)
 signal command_requested(text: String)
+## 屏上日志面板：text=内容，level=info/warn/error（面板据此上色；导出后替代 print 作为语音/LLM 管线状态提示）
+signal log_message(text: String, level: String)

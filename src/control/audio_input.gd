@@ -27,6 +27,7 @@ func _On_Record_Started() -> void:
 		return
 	record_effect.set_recording_active(true)
 	print("[AudioInput] recording started")
+	EventBus.log_message.emit("🎙 录音开始", "info")
 
 
 ## 结束录音：内存拼 WAV 头 + PCM → 经 EventBus 发给 STT（不落盘）
@@ -37,12 +38,14 @@ func _On_Record_Finished() -> void:
 	var recording: AudioStreamWAV = record_effect.get_recording()
 	if recording == null:
 		printerr("[AudioInput] no recording data (microphone not ready?)")
+		EventBus.log_message.emit("❌ 未采集到录音数据（麦克风未就绪？）", "error")
 		return
 	var wav := _build_wav_bytes(recording)
 	EventBus.audio_captured.emit(wav)
 	print("[AudioInput] captured %d wav bytes (%d Hz, %s)" % [
 		wav.size(), recording.mix_rate,
 		"mono" if not recording.stereo else "stereo"])
+	EventBus.log_message.emit("🎙 录音完成（%d 字节）" % wav.size(), "info")
 
 
 ## 在内存中拼一个完整 WAV（44 字节 RIFF 头 + 原始 PCM），供 HTTP 上传

@@ -1,6 +1,9 @@
 [gd_scene format=3 uid="uid://f3uohh2k2e7y"]
 
+[ext_resource type="Script" path="res://src/ui/log_panel/log_panel.gd" id="1_logpanel"]
+
 [node name="log" type="PanelContainer" unique_id=616641716]
+script = ExtResource("1_logpanel")
 anchors_preset = -1
 anchor_left = 0.7
 anchor_top = 0.7

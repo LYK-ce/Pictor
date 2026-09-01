@@ -35,14 +35,17 @@ func _on_audio_captured(wav_bytes: PackedByteArray) -> void:
 func transcribe(wav_bytes: PackedByteArray) -> void:
 	if _busy:
 		print("[STT] busy，丢弃新音频")
+		EventBus.log_message.emit("🔉 STT 忙，丢弃新音频", "warn")
 		return
 	_busy = true
+	EventBus.log_message.emit("🔉 STT 推理中…", "info")
 	var body := JSON.stringify({"audio_base64": Marshalls.raw_to_base64(wav_bytes)})
 	var headers := ["Content-Type: application/json"]
 	var err: Error = _http.request(stt_url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:
 		_busy = false
 		printerr("[STT] 请求发起失败: ", err)
+		EventBus.log_message.emit("❌ STT 请求发起失败", "error")
 
 
 ## HTTP 回调：复位 busy + 解析 + 打印
@@ -50,15 +53,19 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 	_busy = false
 	if result != HTTPRequest.RESULT_SUCCESS:
 		printerr("[STT] 请求失败 result=", result)
+		EventBus.log_message.emit("❌ STT 请求失败", "error")
 		return
 	if response_code != 200:
 		printerr("[STT] HTTP ", response_code, ": ", body.get_string_from_utf8())
+		EventBus.log_message.emit("❌ STT HTTP %d" % response_code, "error")
 		return
 	var text := _parse_response(body)
 	if text == "":
 		printerr("[STT] 未识别出文本")
+		EventBus.log_message.emit("⚠️ STT 未识别出文本", "warn")
 		return
 	print("[STT] 识别结果: ", text)
+	EventBus.log_message.emit("📝 STT 识别结果：%s" % text, "info")
 	# 阶段二：识别文本接入 LLM（与文字输入同一入口）
 	EventBus.command_requested.emit(text)
 
