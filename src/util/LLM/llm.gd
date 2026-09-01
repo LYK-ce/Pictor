@@ -131,6 +131,7 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 	print(response)
 	var content: String = response["choices"][0]["message"]["content"]
 	print("[LLM] 原始响应: ", content)
+	EventBus.log_message.emit("💬 LLM 原始输出：%s" % content, "info")
 	var cmds = _parse_cmds(content)
 	if cmds == null:
 		printerr("[LLM] 输出解析失败")
