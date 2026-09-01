@@ -77,7 +77,6 @@ func set_chunk_delta(chunk_x: int, chunk_y: int, updates: Array) -> void:
 			var new := clampi(old + delta, -ProtocolDef.LOG_ODDS_CLAMP, ProtocolDef.LOG_ODDS_CLAMP)
 			chunk.cells[idx] = ChunkData2D.to_u8(new)
 			changed.append({"gx": chunk_x * CHUNK_SIZE + lx, "gy": chunk_y * CHUNK_SIZE + ly, "log_odds": new})
-	print("[MapData2D] set_delta: chunk(%d,%d) changed=%d cells" % [chunk_x, chunk_y, changed.size()])
 	# _save_chunk(chunk_x, chunk_y, chunk)
 	EventBus.cells_changed.emit(changed)
 
