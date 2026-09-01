@@ -68,9 +68,9 @@ func _test_frame() -> bool:
 
 
 func _test_pose() -> bool:
-	# v3：37B，含 z 高度 + valid/sub_gx/sub_gy 意图字段
-	var payload := OrionMessages.Encode_Pose(12345, 1.5, -2.25, 0.1, -0.2, 0.785, true, 10, -20, 3.5)
-	if payload.size() != 37:
+	# v4：38B，含 z 高度 + rtk_fixed + valid/sub_gx/sub_gy 意图字段
+	var payload := OrionMessages.Encode_Pose(12345, 1.5, -2.25, 0.1, -0.2, 0.785, true, 10, -20, 3.5, true)
+	if payload.size() != 38:
 		print("FAIL pose size: ", payload.size()); return false
 	var dec := OrionMessages.Decode_Pose(payload)
 	if not dec.ok:
@@ -83,10 +83,12 @@ func _test_pose() -> bool:
 		print("FAIL pose fields2: ", dec); return false
 	if dec.valid != true or dec.sub_gx != 10 or dec.sub_gy != -20:
 		print("FAIL pose intent fields: ", dec); return false
-	# 33B 旧帧应被拒绝（v3 严格校验，对齐 Rust）
+	if dec.rtk_fixed != true:
+		print("FAIL pose rtk_fixed field: ", dec); return false
+	# 37B 旧帧应被拒绝（v4 严格校验 38B，对齐 Rust）
 	var old_payload := OrionMessages.Encode_Pose(0, 0, 0, 0, 0, 0)
-	if OrionMessages.Decode_Pose(old_payload.slice(0, 33)).ok:
-		print("FAIL 33B old pose accepted"); return false
+	if OrionMessages.Decode_Pose(old_payload.slice(0, 37)).ok:
+		print("FAIL 37B old pose accepted"); return false
 	print("PASS pose"); return true
 
 
@@ -262,6 +264,8 @@ func _test_parser_dispatch() -> bool:
 	var r := MessageParser.parse_orion_frame(pose_frame)
 	if not r.ok or r.msgid != 1 or absf(r.data.x - 2.0) > 0.0001:
 		print("FAIL parser pose: ", r); return false
+	if r.data.rtk_fixed != false:
+		print("FAIL parser pose rtk_fixed: ", r); return false
 	# map_full 帧 → chunk 坐标换算（origin=-256 → chunk_x=-1）
 	var data := PackedByteArray(); data.resize(65536)
 	var full_frame := OrionFrame.Encode_Frame(2, PackedByteArray([1]), 1, OrionMessages.Encode_Map_Full(0, -256, 256, 256, 256, 0.5, data))
@@ -530,6 +534,10 @@ func _test_endianness() -> bool:
 	var pose_z := OrionMessages.Encode_Pose(0, 0.0, 0.0, 0.0, 0.0, 0.0, false, 0, 0, 3.5)
 	if pose_z.slice(12, 16) != PackedByteArray([0x40, 0x60, 0x00, 0x00]):
 		print("FAIL pose z float BE: ", pose_z.slice(12, 16)); return false
+	# 3c) pose rtk_fixed 字节：true → 0x01 @offset 37
+	var pose_rtk := OrionMessages.Encode_Pose(0, 0.0, 0.0, 0.0, 0.0, 0.0, false, 0, 0, 0.0, true)
+	if pose_rtk[37] != 0x01:
+		print("FAIL pose rtk_fixed byte: ", pose_rtk[37]); return false
 
 	# 4) map_full resolution 0.5 → 0x3F000000；origin_gx=-256 → [FF FF FF 00]
 	var mf := OrionMessages.Encode_Map_Full(0, -256, 256, 256, 256, 0.5, PackedByteArray())

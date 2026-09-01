@@ -1,5 +1,5 @@
 ## Presented by KeJi
-## Date ： 2026-08-11
+## Date ： 2026-09-01
 ##
 ## OrionMessages — Orion 协议 5 种消息 payload 编解码
 ## 规范文档：docs/orion_protocol.md
@@ -7,7 +7,7 @@
 ## Task 21：地图数据语义 = log-odds i8（−8~+8，u8 位模式直传）；三态由显示层按阈值 ±6 派生。
 ##
 ## 消息清单：
-##   msgid 1 ORION_POSE          37B        (u32 time_boot_ms + 6×f32 + valid u8 + sub_gx i32 + sub_gy i32)
+##   msgid 1 ORION_POSE          38B        (u32 time_boot_ms + 6×f32 + valid u8 + sub_gx i32 + sub_gy i32 + rtk_fixed u8)
 ##   msgid 2 ORION_MAP_FULL      20B 头 + data（log-odds i8，−8~+8）
 ##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry（delta i8 差分，累加式）
 ##   msgid 4 ORION_MANUAL_CONTROL 3B        (u8 action + i16 param)
@@ -18,11 +18,11 @@ class_name OrionMessages
 extends RefCounted
 
 
-# ─── ORION_POSE (msgid 1) — 37B（v3：+ z 高度；v2：+ valid/sub_gx/sub_gy 意图字段）────
+# ─── ORION_POSE (msgid 1) — 38B（v4：+ rtk_fixed；v3：+ z 高度；v2：+ valid/sub_gx/sub_gy 意图字段）────
 
-static func Encode_Pose(time_boot_ms: int, x: float, y: float, vx: float, vy: float, yaw: float, valid := false, sub_gx := 0, sub_gy := 0, z := 0.0) -> PackedByteArray:
+static func Encode_Pose(time_boot_ms: int, x: float, y: float, vx: float, vy: float, yaw: float, valid := false, sub_gx := 0, sub_gy := 0, z := 0.0, rtk_fixed := false) -> PackedByteArray:
 	var buf := PackedByteArray()
-	buf.resize(37)
+	buf.resize(38)
 	OrionFrame.Write_U32_BE(buf, 0, time_boot_ms)
 	OrionFrame.Write_F32_BE(buf, 4, x)
 	OrionFrame.Write_F32_BE(buf, 8, y)
@@ -33,13 +33,14 @@ static func Encode_Pose(time_boot_ms: int, x: float, y: float, vx: float, vy: fl
 	buf[28] = 1 if valid else 0
 	OrionFrame.Write_S32_BE(buf, 29, sub_gx)
 	OrionFrame.Write_S32_BE(buf, 33, sub_gy)
+	buf[37] = 1 if rtk_fixed else 0
 	return buf
 
 
-## 返回: { ok, time_boot_ms, x, y, z, vx, vy, yaw, valid, sub_gx, sub_gy, error }
+## 返回: { ok, time_boot_ms, x, y, z, vx, vy, yaw, valid, sub_gx, sub_gy, rtk_fixed, error }
 static func Decode_Pose(payload: PackedByteArray) -> Dictionary:
-	if payload.size() != 37:
-		return _Fail("pose payload size mismatch: %d (expect 37)" % payload.size())
+	if payload.size() != 38:
+		return _Fail("pose payload size mismatch: %d (expect 38)" % payload.size())
 	return {
 		"ok": true,
 		"time_boot_ms": OrionFrame.Read_U32_BE(payload, 0),
@@ -52,6 +53,7 @@ static func Decode_Pose(payload: PackedByteArray) -> Dictionary:
 		"valid": payload[28] != 0,
 		"sub_gx": OrionFrame.Read_S32_BE(payload, 29),
 		"sub_gy": OrionFrame.Read_S32_BE(payload, 33),
+		"rtk_fixed": payload[37] != 0,
 		"error": "",
 	}
 

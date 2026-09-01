@@ -134,26 +134,30 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 | `time_boot_ms` | uint32 | ms | 开机起算时间戳 |
 | `x` | float | m | 全局世界坐标 X（x 东） |
 | `y` | float | m | 全局世界坐标 Y（y 南） |
+| `z` | float | m | 高度（Task 25：无人机飞控 EKF；车恒 0，RTK 不更新 z） |
 | `vx` | float | m/s | X 方向速度 |
 | `vy` | float | m/s | Y 方向速度 |
 | `yaw` | float | rad | 朝向角，范围 [-π, π]，**顺时针为正** |
 | `valid` | uint8 | 意图有效标志（1 = 有效；0 = 无任务/空闲，接收方必须忽略 sub 坐标） |
 | `sub_gx` | int32 | 本车 D* 寻路下一格目标网格坐标 X（subtarget 意图，第一版 1 格） |
 | `sub_gy` | int32 | 本车 D* 寻路下一格目标网格坐标 Y（subtarget 意图，第一版 1 格） |
+| `rtk_fixed` | uint8 | RTK 固定解标志（Task 24：1 = FIXED；0 = 失锁/未启用，位置可信度低） |
 
-**payload 布局**（大端，共 33 字节）：
+**payload 布局**（大端，共 38 字节）：
 
 | 偏移 | 字段 | 类型 |
 |---|---|---|
 | 0 | `time_boot_ms` | u32 |
 | 4 | `x` | f32 |
 | 8 | `y` | f32 |
-| 12 | `vx` | f32 |
-| 16 | `vy` | f32 |
-| 20 | `yaw` | f32 |
-| 24 | `valid` | u8 |
-| 25 | `sub_gx` | i32 |
-| 29 | `sub_gy` | i32 |
+| 12 | `z` | f32 |
+| 16 | `vx` | f32 |
+| 20 | `vy` | f32 |
+| 24 | `yaw` | f32 |
+| 28 | `valid` | u8 |
+| 29 | `sub_gx` | i32 |
+| 33 | `sub_gy` | i32 |
+| 37 | `rtk_fixed` | u8 |
 
 来源映射：`x/y` 直接映射 `RobotState.{x, y}`（全局世界坐标）、`{vx, vy}`、`attitude.yaw`，**无坐标变换**；`time_boot_ms` 由开机基准时间换算（`now_boot_ms()`，替代原 `Pose.ts` unix 秒，字段类型 f64 → u32）；`valid/sub_gx/sub_gy` 映射 `ExecuteState.sub_target`（Executor 写，`state_notifier` 读，Task 13_1）。
 

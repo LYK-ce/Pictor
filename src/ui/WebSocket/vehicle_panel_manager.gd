@@ -1,6 +1,6 @@
 extends VBoxContainer
 ## Presented by KeJi
-## Date: 2026-07-28
+## Date: 2026-09-01
 ##
 ## VehiclePanelManager — 管理所有车辆信息面板，以及选中状态
 
@@ -101,6 +101,7 @@ func _on_pose(vehicle_id: String, pose: Dictionary) -> void:
 	var vx: float = pose.get("vx", 0.0)
 	var vy: float = pose.get("vy", 0.0)
 	panel.Update(vehicle_id, "%.1f, %.1f, %.1f" % [x, y, z], "%.1f°" % rad_to_deg(yaw), "%.1f, %.1f" % [vx, vy])
+	panel.set_rtk_fixed(pose.get("rtk_fixed", false))
 
 
 func _update_selection() -> void:

@@ -1,6 +1,6 @@
 extends PanelContainer
 ## Presented by KeJi
-## Date: 2026-08-16
+## Date: 2026-09-01
 ##
 ## VehiclePanel — 单车信息面板
 
@@ -13,10 +13,12 @@ signal mode_toggled(vehicle_id: String, to_manual: bool)
 @onready var _pose_label := $VBoxContainer/Pose as Label
 @onready var _pos_label := $VBoxContainer/Position as Label
 @onready var _vel_label := $VBoxContainer/Velocity as Label
+@onready var _rtk_label := $VBoxContainer/RTK as Label
 
 ## 车辆身份键（hex peer_id）与显示名分离：显示名会被 peer_info_updated 覆盖，vehicle_id 用于点选/模式切换
 var _vehicle_id := ""
 var _display_name := "连接中"
+var _rtk_fixed := false   # 变化守卫：避免 10Hz 重复覆盖主题色
 
 var _style_normal: StyleBoxFlat
 var _style_manual: StyleBoxFlat
@@ -47,6 +49,19 @@ func set_vehicle_name(peer_name: String) -> void:
 		return
 	_display_name = peer_name
 	_id_label.text = peer_name
+
+
+## 收到位姿 → 更新 RTK 状态角标（rtk_fixed：true=FIXED，false=失锁/未启用）
+func set_rtk_fixed(fixed: bool) -> void:
+	if fixed == _rtk_fixed:
+		return
+	_rtk_fixed = fixed
+	if fixed:
+		_rtk_label.text = "RTK FIXED"
+		_rtk_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.5))   # 绿
+	else:
+		_rtk_label.text = "RTK ···"
+		_rtk_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))   # 灰
 
 
 func _gui_input(event: InputEvent) -> void:
