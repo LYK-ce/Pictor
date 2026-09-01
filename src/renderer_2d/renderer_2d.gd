@@ -1,6 +1,6 @@
 extends Node2D
-## Present by KeJi
-## Date: 2026-06-08
+## Presented by KeJi
+## Date: 2026-09-01
 ##
 ## Renderer2D — 2D 俯视渲染器
 ## 组装 MapContainer2D / Vehicle，订阅 EventBus 信号分发。
@@ -11,6 +11,16 @@ extends Node2D
 @onready var _vehicle_container: Node2D = $VehicleContainer
 
 var _vehicles: Dictionary = {}  # {vehicle_id → Node2D}
+
+## 多车区分色板（modulate 乘法；蓝底图上得到不同色调，可自行调整）
+const VEHICLE_COLORS := [
+	Color(1.0, 1.0, 1.0),     # 原蓝
+	Color(0.4, 0.9, 1.0),     # 淡青
+	Color(1.0, 0.5, 0.9),     # 粉紫
+	Color(0.5, 1.0, 0.5),     # 淡绿
+	Color(1.0, 0.9, 0.4),     # 淡黄
+	Color(0.6, 0.7, 1.0),     # 淡蓝
+]
 
 
 func _ready() -> void:
@@ -28,6 +38,7 @@ func _on_vehicle_registered(vehicle_id: String) -> void:
 		return
 	var instance := vehicle_scene.instantiate()
 	instance.name = vehicle_id
+	instance.set_color(VEHICLE_COLORS[_vehicles.size() % VEHICLE_COLORS.size()])
 	_vehicle_container.add_child(instance)
 	_vehicles[vehicle_id] = instance
 	print("[Renderer2D] vehicle registered: ", vehicle_id)
