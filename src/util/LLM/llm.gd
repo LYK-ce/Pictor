@@ -1,5 +1,5 @@
 ## Presented by KeJi
-## Date ： 2026-08-04
+## Date ： 2026-09-01
 ##
 ## LLM — 自然语言指令翻译工具
 ## 输入：用户自然语言 + 车辆上下文（由 AutoHandler 拼好传入）
@@ -22,6 +22,9 @@ signal request_failed(msg: String)
 ## 请求超时（秒）
 @export var timeout := 120.0
 
+## 配置文件路径：运行环境 .config/pictor_config.cfg（已 .gitignore，不进 git）
+const CONFIG_PATH := "res://.config/pictor_config.cfg"
+
 @onready var _http := $HTTPRequest
 
 ## 系统提示词：约束 LLM 输出为任务序列（missions JSON 数组）
@@ -40,9 +43,44 @@ const SYSTEM_PROMPT := """你是 Pictor 多车控制系统的指令翻译器。�
 
 
 func _ready() -> void:
+	_load_config()  # 先读 .config 配置，覆盖 @export 默认值
 	_http.timeout = timeout
 	_http.request_completed.connect(_on_request_completed)
 	# 不自动发送：等待外部调用 generate_cmds()（如 TextInput 发送按钮）
+
+
+## 加载配置文件覆盖 @export 默认值；文件不存在时生成默认模板
+func _load_config() -> void:
+	if not FileAccess.file_exists(CONFIG_PATH):
+		_save_default_config()
+		return
+	var cfg := ConfigFile.new()
+	var err := cfg.load(CONFIG_PATH)
+	if err != OK:
+		printerr("[LLM] 读取配置失败: ", err, " — 使用 @export 默认值")
+		return
+	api_url = str(cfg.get_value("llm", "api_url", api_url))
+	api_key = str(cfg.get_value("llm", "api_key", api_key))
+	model = str(cfg.get_value("llm", "model", model))
+	timeout = float(cfg.get_value("llm", "timeout", timeout))
+
+
+## 生成默认配置模板（api_key 留空，用户在文件里填真实 key）
+func _save_default_config() -> void:
+	var dir_err := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://.config"))
+	if dir_err != OK:
+		printerr("[LLM] 创建 .config 目录失败: ", dir_err)
+		return
+	var cfg := ConfigFile.new()
+	cfg.set_value("llm", "api_url", api_url)
+	cfg.set_value("llm", "api_key", "")
+	cfg.set_value("llm", "model", model)
+	cfg.set_value("llm", "timeout", timeout)
+	var save_err := cfg.save(CONFIG_PATH)
+	if save_err != OK:
+		printerr("[LLM] 生成默认配置失败: ", save_err)
+	else:
+		print("[LLM] 已生成默认配置: ", CONFIG_PATH)
 
 
 ## 发起一次指令翻译请求（异步，结果经 _on_request_completed 回调）
