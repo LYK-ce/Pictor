@@ -1,5 +1,5 @@
 ## Presented by KeJi
-## Date ： 2026-08-31
+## Date ： 2026-09-01
 ##
 ## VehicleRegistry — 车辆注册表（单一数据源）
 ## 订阅 EventBus 车辆信号，维护 {vehicle_id → {name, x, y, yaw}}，供 LLM 编排读取上下文。
@@ -47,3 +47,9 @@ func get_id_by_name(vehicle_name: String) -> String:
 		if str(vehicles[id].get("name", "")) == vehicle_name:
 			return id
 	return ""
+
+
+## mock 车辆接口（测试用）：手动塞一辆假车进注册表，供 STT/LLM 无真车联调。
+## 注意：不在 _ready 里调用，需要时由外部（测试脚本/调试）手动调用。
+func add_mock_vehicle(vehicle_id: String, vehicle_name: String) -> void:
+	vehicles[vehicle_id] = {"name": vehicle_name, "x": 0.0, "y": 0.0, "yaw": 0.0}
