@@ -1,12 +1,13 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://cmwtejsso2vae"]
 
-[ext_resource type="Script" path="res://src/util/util.gd" id="1_util"]
-[ext_resource type="PackedScene" path="res://src/util/LLM/llm.tscn" id="2_llm"]
+[ext_resource type="Script" uid="uid://b5yiqfemt1ebc" path="res://src/util/util.gd" id="1_util"]
+[ext_resource type="PackedScene" uid="uid://bndia1vc5oo3p" path="res://src/util/LLM/llm.tscn" id="2_llm"]
 [ext_resource type="PackedScene" path="res://src/util/STT/stt.tscn" id="3_stt"]
 
-[node name="Util" type="Node"]
+[node name="Util" type="Node" unique_id=1854845244]
 script = ExtResource("1_util")
 
-[node name="LLM" parent="." instance=ExtResource("2_llm")]
+[node name="LLM" parent="." unique_id=1314398138 instance=ExtResource("2_llm")]
+api_key = "sk-588536f4ba934cfe8069fff2b9b648af"
 
-[node name="STT" parent="." instance=ExtResource("3_stt")]
+[node name="STT" parent="." unique_id=131759645 instance=ExtResource("3_stt")]
