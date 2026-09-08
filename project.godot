@@ -35,5 +35,3 @@ mode="2d"
 [renderer_2d]
 
 cell_size=1.0
-
-

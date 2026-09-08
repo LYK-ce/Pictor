@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://cmwtejsso2vae" path="res://src/util/util.tscn" id="8_util"]
 [ext_resource type="PackedScene" uid="uid://bfn0swf4nchu1" path="res://src/ui/text_input.tscn" id="8_w0wra"]
 [ext_resource type="PackedScene" uid="uid://f3uohh2k2e7y" path="res://src/ui/log_panel/log.tscn" id="10_ibsor"]
+[ext_resource type="PackedScene" uid="uid://cg2a1yxqyl82x" path="res://src/ui/command_channel/command_channel.tscn" id="11_hc2u7"]
 [ext_resource type="PackedScene" uid="uid://ci3b8tr6nfigl" path="res://src/ui/scaler/scale.tscn" id="11_scale"]
 [ext_resource type="PackedScene" uid="uid://c1rfhigc30j7o" path="res://src/vehicle_registry/vehicle_registry.tscn" id="12_vreg"]
 
@@ -38,6 +39,8 @@ script = ExtResource("4_kb")
 [node name="Scale" parent="UI" unique_id=741258963 instance=ExtResource("11_scale")]
 
 [node name="log" parent="UI" unique_id=616641716 instance=ExtResource("10_ibsor")]
+
+[node name="command_channel" parent="UI" unique_id=1692293237 instance=ExtResource("11_hc2u7")]
 
 [node name="ControlMaster" parent="." unique_id=2053521022 instance=ExtResource("6_ctrl")]
 
