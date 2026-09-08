@@ -21,6 +21,7 @@ func _ready() -> void:
 	kernel.peer_info_updated.connect(_on_peer_info_updated)
 	add_child(kernel)  # 触发 Rust 侧 ready() → 后台 bootstrap
 	EventBus.cmd_send.connect(_on_cmd_send)
+	EventBus.user_command_requested.connect(_on_user_command_requested)
 
 
 func _process(_delta: float) -> void:
@@ -85,3 +86,13 @@ func _on_peer_info_updated(peer_id: String, peer_name: String, node_type: String
 	if peer_name.is_empty():
 		return  # 空名过滤（models/sessions 也会发 peer_info_updated）
 	EventBus.peer_info_updated.emit(peer_id, peer_name, node_type)
+
+
+## 命令通道：转发内核命令字符串（如 "session create xxx"），ACK 经 log_message 回显到 log panel
+func _on_user_command_requested(command_line: String) -> void:
+	if not kernel:
+		EventBus.log_message.emit("ERR: kernel 未就绪", "error")
+		return
+	var ack: String = kernel.send_user_command(command_line)
+	var level := "error" if ack.begins_with("ERR") else "info"
+	EventBus.log_message.emit(ack, level)
