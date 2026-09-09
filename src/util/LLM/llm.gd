@@ -160,5 +160,12 @@ func _parse_cmds(content: String):
 		parsed = JSON.parse_string(match.get_string(1).strip_edges())
 		if parsed is Array:
 			return parsed
+	# 兜底：截取最后一个 [ ... ] 数组（模型会把 <think> 思考内容一起吐出，取最后一段才是答案）
+	var start := content.rfind("[")
+	var end := content.rfind("]")
+	if start != -1 and end > start:
+		parsed = JSON.parse_string(content.substr(start, end - start + 1))
+		if parsed is Array:
+			return parsed
 	printerr("[LLM] 输出解析失败，原文: ", content)
 	return null
