@@ -21,6 +21,8 @@ signal request_failed(msg: String)
 @export var model := "deepseek-v4-flash"
 ## 请求超时（秒）
 @export var timeout := 120.0
+## 最大生成 token 数
+@export var max_tokens := 512
 
 ## 配置文件路径：运行环境 .config/pictor_config.cfg（已 .gitignore，不进 git）
 const CONFIG_PATH := "res://.config/pictor_config.cfg"
@@ -63,6 +65,7 @@ func _load_config() -> void:
 	api_key = str(cfg.get_value("llm", "api_key", api_key))
 	model = str(cfg.get_value("llm", "model", model))
 	timeout = float(cfg.get_value("llm", "timeout", timeout))
+	max_tokens = int(cfg.get_value("llm", "max_tokens", max_tokens))
 
 
 ## 生成默认配置模板（api_key 留空，用户在文件里填真实 key）
@@ -76,6 +79,7 @@ func _save_default_config() -> void:
 	cfg.set_value("llm", "api_key", "")
 	cfg.set_value("llm", "model", model)
 	cfg.set_value("llm", "timeout", timeout)
+	cfg.set_value("llm", "max_tokens", max_tokens)
 	var save_err := cfg.save(CONFIG_PATH)
 	if save_err != OK:
 		printerr("[LLM] 生成默认配置失败: ", save_err)
@@ -97,6 +101,7 @@ func generate_cmds(text: String) -> void:
 			{"role": "user", "content": text},
 		],
 		"stream": false,
+		"max_tokens": max_tokens,
 		"thinking": {"type": "enabled"},
 		"reasoning_effort": "medium",
 	}
