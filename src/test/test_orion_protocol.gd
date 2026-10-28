@@ -22,6 +22,7 @@ func _init() -> void:
 	ok = ok and _test_endianness()
 	ok = ok and _test_llm_missions()
 	ok = ok and _test_circle_task_set()
+	ok = ok and _test_target_alloc()
 	ok = ok and _test_log_odds_signed()
 	ok = ok and _test_clamp()
 	ok = ok and _test_threshold()
@@ -179,60 +180,69 @@ func _test_takeoff_land() -> bool:
 
 
 func _test_task_set() -> bool:
-	# —— 单车（member_count=1）往返 ——
-	var members_single := [PackedByteArray([0x10, 0x20])]
-	var payload := OrionMessages.Encode_Task_Set(
-		[{"type": 0, "x": 12.5, "y": -3.25}], members_single)
-	# 布局: [m_count=1][mem_count=1][len=2][10 20][type][x 4B][y 4B] = 2+3+9 = 14B
-	if payload.size() != 14:
+	# —— 单车（mission_count=1；task_36 新布局 1 + 9n，无成员段）——
+	var payload := OrionMessages.Encode_Task_Set([{"type": 0, "x": 12.5, "y": -3.25}])
+	# 布局: [m_count=1][type=0][x 4B][y 4B] = 1 + 9 = 10B
+	if payload.size() != 10:
 		print("FAIL task_set size: ", payload.size()); return false
-	if payload[0] != 1 or payload[1] != 1:
-		print("FAIL task_set counts"); return false
-	if payload.slice(2, 5) != PackedByteArray([2, 0x10, 0x20]):
-		print("FAIL task_set member bytes: ", payload.slice(2, 5)); return false
+	if payload[0] != 1 or payload[1] != 0:
+		print("FAIL task_set header bytes"); return false
+	if payload.slice(2, 6) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
+		print("FAIL task_set x=12.5 BE: ", payload.slice(2, 6)); return false
+	if payload.slice(6, 10) != PackedByteArray([0xC0, 0x50, 0x00, 0x00]):
+		print("FAIL task_set y=-3.25 BE: ", payload.slice(6, 10)); return false
 	var dec := OrionMessages.Decode_Task_Set(payload)
-	if not dec.ok or dec.mission_count != 1 or dec.member_count != 1 or dec.missions.size() != 1:
+	if not dec.ok or dec.mission_count != 1 or dec.missions.size() != 1:
 		print("FAIL task_set decode: ", dec); return false
-	if dec.members.size() != 1 or dec.members[0] != PackedByteArray([0x10, 0x20]):
-		print("FAIL task_set members decode: ", dec.members); return false
+	if dec.has("member_count") or dec.has("members"):
+		print("FAIL task_set still returns member fields: ", dec); return false
 	var m0: Dictionary = dec.missions[0]
 	if m0.type != 0 or absf(m0.x - 12.5) > 0.0001 or absf(m0.y - (-3.25)) > 0.0001:
 		print("FAIL task_set m0: ", m0); return false
 
-	# —— 群发（member_count=2，3 条任务）往返 ——
-	var members_multi := [PackedByteArray([1, 2, 3]), PackedByteArray([0xAA])]
+	# —— 多条任务（mission_count=3）往返 ——
 	var missions := [
 		{"type": 0, "x": 12.5, "y": -3.25},
 		{"type": 0, "x": 0.0, "y": 99.99},
 		{"type": 0, "x": -1.0, "y": 1.0},
 	]
-	var payload2 := OrionMessages.Encode_Task_Set(missions, members_multi)
+	var payload2 := OrionMessages.Encode_Task_Set(missions)
+	if payload2.size() != 1 + 9 * 3:
+		print("FAIL task_set multi size: ", payload2.size()); return false
+	if payload2[0] != 3:
+		print("FAIL task_set multi count byte"); return false
 	var dec2 := OrionMessages.Decode_Task_Set(payload2)
-	if not dec2.ok or dec2.mission_count != 3 or dec2.member_count != 2:
+	if not dec2.ok or dec2.mission_count != 3 or dec2.missions.size() != 3:
 		print("FAIL task_set multi decode: ", dec2); return false
-	if dec2.members[0] != PackedByteArray([1, 2, 3]) or dec2.members[1] != PackedByteArray([0xAA]):
-		print("FAIL task_set multi members: ", dec2.members); return false
 	if absf(dec2.missions[1].y - 99.99) > 0.0001 or absf(dec2.missions[2].x - (-1.0)) > 0.0001:
 		print("FAIL task_set multi missions: ", dec2.missions); return false
 
-	# —— 取消帧（member_count=0, mission_count=0）往返 ——
-	var cancel := OrionMessages.Encode_Task_Set([], [])
-	if cancel.size() != 2 or cancel[0] != 0 or cancel[1] != 0:
+	# —— 取消帧（mission_count=0 → 1 字节）——
+	var cancel := OrionMessages.Encode_Task_Set([])
+	if cancel.size() != 1 or cancel[0] != 0:
 		print("FAIL task_set cancel layout"); return false
 	var dec_cancel := OrionMessages.Decode_Task_Set(cancel)
 	if not dec_cancel.ok or dec_cancel.mission_count != 0 or not dec_cancel.missions.is_empty():
 		print("FAIL task_set cancel decode: ", dec_cancel); return false
+	# 空 payload 不是取消帧（车端 decode_task_set 也拒）
+	if OrionMessages.Decode_Task_Set(PackedByteArray()).ok:
+		print("FAIL empty payload accepted"); return false
 
-	# —— 越界防御 ——
-	if OrionMessages.Decode_Task_Set(PackedByteArray([0])).ok:
-		print("FAIL task_set payload<2 accepted"); return false
-	var bad_member := PackedByteArray([0, 1, 10])  # member len=10 但无数据
-	if OrionMessages.Decode_Task_Set(bad_member).ok:
-		print("FAIL task_set member OOB accepted"); return false
-	var bad_missions := PackedByteArray([1, 0])    # mission_count=1 但仅 8B 任务数据（需 9）
-	bad_missions.resize(10)
-	if OrionMessages.Decode_Task_Set(bad_missions).ok:
-		print("FAIL task_set missions mismatch accepted"); return false
+	# —— 旧布局（带 member 段）必须被拒：长度 1+9n 不符 ——
+	var old_layout := PackedByteArray([1, 1, 2, 0x10, 0x20])
+	old_layout.append_array(OrionMessages.Encode_Task_Set([{"type": 0, "x": 12.5, "y": -3.25}]).slice(1))
+	if old_layout.size() != 14 or OrionMessages.Decode_Task_Set(old_layout).ok:
+		print("FAIL legacy layout with peer list accepted"); return false
+
+	# —— 长度不符：mission_count=1 但只有 8B 任务数据 / 多 1 字节 ——
+	var short_payload := PackedByteArray([1])
+	short_payload.resize(9)
+	if OrionMessages.Decode_Task_Set(short_payload).ok:
+		print("FAIL task_set short payload accepted"); return false
+	var long_payload := payload.duplicate()
+	long_payload.append(0)
+	if OrionMessages.Decode_Task_Set(long_payload).ok:
+		print("FAIL task_set trailing byte accepted"); return false
 	print("PASS task_set"); return true
 
 
@@ -253,7 +263,7 @@ func _test_build_cmd() -> bool:
 	var frame2 := OrionMessages.Build_Cmd(cancel)
 	var dec2 := OrionFrame.Decode_Frame(frame2)
 	var ts := OrionMessages.Decode_Task_Set(dec2.payload)
-	if ts.mission_count != 0 or ts.member_count != 0 or not ts.missions.is_empty():
+	if ts.mission_count != 0 or not ts.missions.is_empty():
 		print("FAIL build_cmd cancel: ", ts); return false
 	print("PASS build_cmd"); return true
 
@@ -294,68 +304,57 @@ func _test_llm_missions() -> bool:
 		print("FAIL missions frame empty"); return false
 	var dec: Dictionary = OrionFrame.Decode_Frame(frame)
 	var ts := OrionMessages.Decode_Task_Set(dec.payload)
-	if ts.mission_count != 2 or ts.member_count != 0 or ts.missions.size() != 2:
+	if ts.mission_count != 2 or ts.missions.size() != 2:
 		print("FAIL missions count: ", ts); return false
 	if ts.missions[0].type != 0 or absf(ts.missions[0].x - 3.0) > 0.0001 or absf(ts.missions[0].y - 5.0) > 0.0001:
 		print("FAIL mission0: ", ts.missions[0]); return false
 	if ts.missions[1].type != 0 or absf(ts.missions[1].x - 1.0) > 0.0001 or absf(ts.missions[1].y - 1.0) > 0.0001:
 		print("FAIL mission1: ", ts.missions[1]); return false
-	# 与 Rust 端字节比对：missions[0] = (type 0, x=3.0, y=5.0)
-	# payload: [mission_count=2][member_count=0] | 00 40 40 00 40 A0 00 00 | 00 3F 80 00 00 3F 80 00 00
+	# 与 Rust 端字节比对：missions[0] = (type 0, x=3.0, y=5.0)；task_36 布局 1 + 9n，无成员段
+	# payload: [mission_count=2] | 00 40 40 00 40 A0 00 00 | 00 3F 80 00 00 3F 80 00 00
 	var payload: PackedByteArray = dec.payload
-	if payload[0] != 2 or payload[1] != 0:
+	if payload.size() != 1 + 9 * 2 or payload[0] != 2:
 		print("FAIL missions count bytes"); return false
-	if payload.slice(2, 3) != PackedByteArray([0x00]):
+	if payload.slice(1, 2) != PackedByteArray([0x00]):
 		print("FAIL mission0 type byte"); return false
-	if payload.slice(3, 7) != PackedByteArray([0x40, 0x40, 0x00, 0x00]):
-		print("FAIL mission0 x=3.0 BE: ", payload.slice(3, 7)); return false
+	if payload.slice(2, 6) != PackedByteArray([0x40, 0x40, 0x00, 0x00]):
+		print("FAIL mission0 x=3.0 BE: ", payload.slice(2, 6)); return false
 	print("PASS llm_missions"); return true
 
 
-# ─── Task 24：Circle 命令（mission type=1 环形散布）────────────
+# ─── Circle 已废弃（task_36 §十一 #27）：Pictor 不再生成 type=1 ────────
 
 func _test_circle_task_set() -> bool:
-	# 归一化：字符串 type → 整数（大小写不敏感；未知→goto）
-	if ProtocolDef.Mission_Type_From("circle") != ProtocolDef.MISSION_TYPE_CIRCLE:
-		print("FAIL mission_type_from circle"); return false
-	if ProtocolDef.Mission_Type_From("CIRCLE") != ProtocolDef.MISSION_TYPE_CIRCLE:
+	# 归一化：字符串 type 一律 → Goto（"circle" 的环形几何由地面站 TargetAlloc 算，不进协议）
+	if ProtocolDef.Mission_Type_From("circle") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from circle should be Goto"); return false
+	if ProtocolDef.Mission_Type_From("CIRCLE") != ProtocolDef.MISSION_TYPE_GOTO:
 		print("FAIL mission_type_from CIRCLE case"); return false
 	if ProtocolDef.Mission_Type_From("goto") != ProtocolDef.MISSION_TYPE_GOTO:
 		print("FAIL mission_type_from goto"); return false
 	if ProtocolDef.Mission_Type_From("unknown") != ProtocolDef.MISSION_TYPE_GOTO:
 		print("FAIL mission_type_from unknown"); return false
+	# 数字直通：1 原样返回；是否真的发出去由 Encode 的降级门控决定
 	if ProtocolDef.Mission_Type_From(1) != 1:
 		print("FAIL mission_type_from int passthrough"); return false
 
-	# 构造：build_auto_push_circle → type=1 + 圆心坐标
-	var cmd := MessageBuilder.build_auto_push_circle(1.5, 2.5)
-	if cmd.msgid != ProtocolDef.MSGID_TASK_SET:
-		print("FAIL circle msgid"); return false
-	var m0: Dictionary = cmd.missions[0]
-	if m0.type != ProtocolDef.MISSION_TYPE_CIRCLE or absf(m0.x - 1.5) > 0.0001 or absf(m0.y - 2.5) > 0.0001:
-		print("FAIL circle build: ", m0); return false
+	# Encode 降级门控：整数 type=1 也被改成 0（车端只认 Goto，静默丢任务更糟）
+	var payload_int := OrionMessages.Encode_Task_Set([{"type": 1, "x": 3.0, "y": 4.0}])
+	var dec_int := OrionMessages.Decode_Task_Set(payload_int)
+	if dec_int.missions[0].type != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL int circle type not coerced: ", dec_int.missions[0]); return false
 
-	# 编解码 roundtrip：type=1 保持（9 字节布局不变）
-	var payload := OrionMessages.Encode_Task_Set(cmd.missions)
-	var dec := OrionMessages.Decode_Task_Set(payload)
-	if not dec.ok or dec.mission_count != 1 or dec.missions.size() != 1:
-		print("FAIL circle roundtrip decode: ", dec); return false
-	var dm: Dictionary = dec.missions[0]
-	if dm.type != ProtocolDef.MISSION_TYPE_CIRCLE or absf(dm.x - 1.5) > 0.0001 or absf(dm.y - 2.5) > 0.0001:
-		print("FAIL circle roundtrip fields: ", dm); return false
-
-	# Encode_Task_Set 字符串 "circle" 归一化（LLM 防御路径）
-	var payload_str := OrionMessages.Encode_Task_Set([{"type": "circle", "x": 3.0, "y": 4.0}])
-	var dec_str := OrionMessages.Decode_Task_Set(payload_str)
-	var dm2: Dictionary = dec_str.missions[0]
-	if dm2.type != ProtocolDef.MISSION_TYPE_CIRCLE or absf(dm2.x - 3.0) > 0.0001 or absf(dm2.y - 4.0) > 0.0001:
-		print("FAIL circle string normalize: ", dm2); return false
-
-	# build_task_set 字符串 "circle" 归一化（LLM 链路）
+	# build_task_set 字符串 "circle" 归一化（LLM 链路）→ Goto，且 1 + 9n 可编码
 	var ms := MessageBuilder.build_task_set([{"type": "circle", "x": 3.0, "y": 4.0}])
-	var ms0: Dictionary = ms.missions[0]
-	if ms0.type != ProtocolDef.MISSION_TYPE_CIRCLE:
+	if ms.missions[0].type != ProtocolDef.MISSION_TYPE_GOTO:
 		print("FAIL build_task_set circle normalize"); return false
+	var frame := OrionMessages.Build_Cmd(ms)
+	var dec_frame := OrionFrame.Decode_Frame(frame)
+	var ts := OrionMessages.Decode_Task_Set(dec_frame.payload)
+	if not ts.ok or ts.mission_count != 1 or ts.missions.size() != 1:
+		print("FAIL circle-as-goto roundtrip: ", ts); return false
+	if absf(ts.missions[0].x - 3.0) > 0.0001 or absf(ts.missions[0].y - 4.0) > 0.0001:
+		print("FAIL circle-as-goto fields: ", ts.missions[0]); return false
 	print("PASS circle_task_set"); return true
 
 
@@ -551,10 +550,10 @@ func _test_endianness() -> bool:
 	if mc.slice(1, 3) != PackedByteArray([0xFF, 0xCE]):
 		print("FAIL manual param i16 BE: ", mc.slice(1, 3)); return false
 
-	# 6) task_set x=12.5 → 0x41480000 → [41 48 00 00]（偏移 3..7：跳过 [m_count][mem_count][type]）
+	# 6) task_set x=12.5 → 0x41480000 → [41 48 00 00]（偏移 2..6：跳过 [m_count][type]，task_36 无成员段）
 	var ts := OrionMessages.Encode_Task_Set([{"type": 0, "x": 12.5, "y": 0.0}])
-	if ts.slice(3, 7) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
-		print("FAIL task_set f32 BE: ", ts.slice(3, 7)); return false
+	if ts.slice(2, 6) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
+		print("FAIL task_set f32 BE: ", ts.slice(2, 6)); return false
 
 	# 7) map_delta delta i8：-8 → 0xF8 位模式（Task 21）
 	var md := OrionMessages.Encode_Map_Delta(0, [{"gx": 0, "gy": 0, "delta": -8}])
@@ -566,3 +565,35 @@ func _test_endianness() -> bool:
 
 	print("PASS endianness (BE bytes match Rust)"); return true
 
+
+# ─── task_36 §12.7.5：地面站逐车算点（占位实现）───────────────
+
+func _test_target_alloc() -> bool:
+	# 位姿门控：x/y 都为 0 = 尚未收到位姿 → 剔除；未注册的车也算无位姿
+	var ids: Array[String] = ["a", "b", "c"]
+	var table := {
+		"a": {"name": "车A", "x": 0.0, "y": 0.0},
+		"b": {"name": "车B", "x": 3.0, "y": 4.0},
+		"c": {"name": "车C", "x": 0.0, "y": -2.0},
+	}
+	var gate := TargetAlloc.filter_placeable(ids, table)
+	if gate.ok.size() != 2 or gate.rejected.size() != 1:
+		print("FAIL target_alloc filter sizes: ", gate); return false
+	if gate.rejected[0] != "a":
+		print("FAIL target_alloc rejected: ", gate.rejected); return false
+	if gate.ok[0] != "b" or gate.ok[1] != "c":
+		print("FAIL target_alloc ok order: ", gate.ok); return false
+	var ghost_ids: Array[String] = ["ghost"]
+	var gate2 := TargetAlloc.filter_placeable(ghost_ids, table)
+	if not gate2.ok.is_empty() or gate2.rejected.size() != 1:
+		print("FAIL target_alloc unknown id: ", gate2); return false
+
+	# 占位算法：全部返回同一锚点；shape 只是占位参数，不影响结果
+	var anchor := Vector2(5.0, -1.5)
+	var pts := TargetAlloc.compute_targets(gate.ok, anchor, "goto")
+	if pts.size() != 2 or pts["b"] != anchor or pts["c"] != anchor:
+		print("FAIL compute_targets placeholder: ", pts); return false
+	var pts_circle := TargetAlloc.compute_targets(gate.ok, anchor, "circle")
+	if pts_circle["b"] != anchor or pts_circle["c"] != anchor:
+		print("FAIL compute_targets shape ignored: ", pts_circle); return false
+	print("PASS target_alloc"); return true

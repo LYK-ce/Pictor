@@ -3,7 +3,7 @@ extends Node2D
 ## Date: 2026-08-05
 ##
 ## AutoHandler — 自动控制编排：
-## 1. 右键 Goto 广播给 selected_ids（原有）
+## 1. 右键 Goto：逐车算点、逐车单独发帧（task_36 §12.7；每帧只有该车自己的点）
 ## 2. LLM 指令编排：监听 EventBus.command_requested → 拼车辆上下文 → 调 util.llm.generate_cmds
 ##    → 接收 cmds_generated → 按车分发（Task 27）
 ## 瞬态态：点命令按钮（如巡逻）后等待目标点，左键执行 / 右键取消
@@ -47,7 +47,7 @@ func _on_command_requested(text: String) -> void:
 ## 从车辆注册表拼「车辆列表 + 用户指令」上下文
 func _build_context(user_text: String) -> String:
 	var lines := PackedStringArray()
-	lines.append("当前在线车辆（位置与朝向，朝向单位度，0=正北，90=正东）：")
+	lines.append("当前在线车辆（位置与朝向，朝向单位度，0=+x 东，顺时针为正）：")
 	if vehicle_registry == null or vehicle_registry.vehicles.is_empty():
 		lines.append("（无）")
 	else:
@@ -135,9 +135,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	var tile := CoordUtils.game_to_tile(mouse_pos)
 	var real := CoordUtils.tile_to_real(tile.x, tile.y)
 
-	# Task 22：对选中车群发（单条 TASK_SET，members 由 WebSocketManager 按 targets 填充，车端自行散布）
-	EventBus.cmd_send.emit(app_state.selected_ids,
-		MessageBuilder.build_auto_push_goto(real.x, real.y))
+	# task_36 §12.7：协同上移地面站 —— 逐车算点、逐车单独发帧（每帧只有该车自己的点）
+	_dispatch_per_vehicle(app_state.selected_ids, real, "goto")
 
 	# 通知高亮
 	EventBus.goto_issued.emit(real.x, real.y)
@@ -152,5 +151,30 @@ func _execute_pending(_mb: InputEventMouseButton) -> void:
 	var mouse_pos := get_global_mouse_position()
 	var tile := CoordUtils.game_to_tile(mouse_pos)
 	var real := CoordUtils.tile_to_real(tile.x, tile.y)
-	EventBus.cmd_send.emit(app_state.selected_ids, MessageBuilder.build_auto_push_circle(real.x, real.y))
+	# Circle 手势：x/y = 圆心。车端已无 Circle 树（§十一 #27），绕圆铺开由 TargetAlloc 在地面站算；
+	# 占位实现下所有车去圆心同一个点（§12.7.5），下发的任务类型仍是 Goto。
+	_dispatch_per_vehicle(app_state.selected_ids, real, "circle")
 	EventBus.goto_issued.emit(real.x, real.y)  # 圆心高亮（复用 Goto 高亮框）
+
+
+## 逐车下发：位姿门控 → 逐车算点 → 每辆车单独一帧（task_36 §十一 #27 / §12.7.3 第 4 条）
+## 一帧只含一辆车自己的目标点；名单段已从协议删除（§十一 #28）。
+func _dispatch_per_vehicle(selected: Array[String], anchor: Vector2, shape: String) -> void:
+	if selected.is_empty():
+		return
+	var vehicles: Dictionary = vehicle_registry.vehicles if vehicle_registry != null else {}
+	var gate := TargetAlloc.filter_placeable(selected, vehicles)
+	for id: String in gate.rejected:
+		var v: Dictionary = vehicles.get(id, {})
+		var label := str(v.get("name", ""))
+		if label.is_empty():
+			label = id
+		printerr("[AutoHandler] 无位姿/未注册，跳过算点: ", id)
+		EventBus.log_message.emit("⚠️ %s 尚未收到位姿，已跳过" % label, "warn")
+	if gate.ok.is_empty():
+		EventBus.log_message.emit("❌ 没有可下发的车（无有效位姿）", "warn")
+		return
+	var points := TargetAlloc.compute_targets(gate.ok, anchor, shape)
+	for id: String in points:
+		EventBus.cmd_send.emit([id] as Array[String],
+			MessageBuilder.build_auto_push_goto(points[id].x, points[id].y))

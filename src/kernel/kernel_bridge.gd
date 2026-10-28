@@ -54,17 +54,14 @@ func _on_robot_frame(data: PackedByteArray) -> void:
 
 
 ## 下行：cmd_send → 拼帧 → 逐车 send_command
+## task_36 §十一 #27：协同已上移地面站，TASK_SET 必须"一帧一车"（帧内只有该车自己的点）。
+## targets 多于 1 且是 TASK_SET 时告警：同一帧会被原样重复发给多辆车 = 所有车去同一个点。
 func _on_cmd_send(targets: Array[String], cmd: Dictionary) -> void:
 	if not kernel:
 		printerr("[KernelBridge] kernel 未就绪，cmd 丢弃: ", cmd)
 		return
-	# TASK_SET 群发：按 targets 填 members（vehicle_id 即 hex peer_id，直接 hex_decode）
-	if cmd.get("msgid", -1) == ProtocolDef.MSGID_TASK_SET and not cmd.has("members"):
-		var members: Array = []
-		if not cmd.get("missions", []).is_empty():
-			for id in targets:
-				members.append(id.hex_decode())
-		cmd["members"] = members
+	if cmd.get("msgid", -1) == ProtocolDef.MSGID_TASK_SET and targets.size() > 1:
+		push_warning("[KernelBridge] TASK_SET 一帧只应发给一辆车，收到 targets=%d（逐车重发同一帧）" % targets.size())
 	var frame := OrionMessages.Build_Cmd(cmd)
 	if frame.is_empty():
 		printerr("[KernelBridge] cmd encode failed: ", cmd)

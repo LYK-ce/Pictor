@@ -61,20 +61,14 @@ static func build_manual_stop() -> Dictionary:
 	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_STOP, "param": 0}
 
 
-# ─── ORION_TASK_SET (msgid 5)：任务队列整体替换 ────────────────
+# ─── ORION_TASK_SET (msgid 5)：任务队列整体替换（一帧 = 一辆车）─────────
 
+## task_36 §12.7：地面站逐车算点、逐车单独发帧 —— 每帧 missions[0] 就是该车自己的点；
+## 名单段已从协议删除（§十一 #28）。
 static func build_auto_push_goto(x: float, y: float) -> Dictionary:
 	return {
 		"msgid": ProtocolDef.MSGID_TASK_SET,
 		"missions": [{"type": ProtocolDef.MISSION_TYPE_GOTO, "x": x, "y": y}],
-	}
-
-
-## Circle 群发：x/y = 圆心（世界坐标，米）；半径车端写死 0.5m 不进协议
-static func build_auto_push_circle(x: float, y: float) -> Dictionary:
-	return {
-		"msgid": ProtocolDef.MSGID_TASK_SET,
-		"missions": [{"type": ProtocolDef.MISSION_TYPE_CIRCLE, "x": x, "y": y}],
 	}
 
 

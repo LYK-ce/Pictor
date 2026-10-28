@@ -14,7 +14,7 @@ signal vehicle_unregistered(vehicle_id: String)
 ## 桥透传的节点名 + 节点类型（peer_info_updated），面板据此显示车名与类型
 signal peer_info_updated(vehicle_id: String, peer_name: String, node_type: String)
 signal selection_changed(id: String)
-## targets = 目标车辆列表（hex vehicle_id）；TASK_SET 的 members 由 KernelBridge 按 targets 填充
+## targets = 目标车辆列表（hex vehicle_id）；TASK_SET 一帧一车，targets 只应有 1 个元素（task_36 §12.7）
 signal cmd_send(targets: Array[String], cmd: Dictionary)
 signal cells_changed(updates: Array)
 signal goto_issued(x: float, y: float)

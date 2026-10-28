@@ -62,7 +62,7 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
   | `type` | string | 固定 `"hello"` |
   | `vehicle_id` | string | 车名（= peer_name） |
   | `address` | string | 本车 WS 地址 |
-  | `peer_id` | string | 本车 peer_id 的 **hex 编码**（38B Ed25519 → 76 hex 字符，与帧头 sysid 字节一致）；Task 22：终端维护"在线车 → peer_id"表，群发 TASK_SET 构造 members 的身份来源 |
+  | `peer_id` | string | 本车 peer_id 的 **hex 编码**（38B Ed25519 → 76 hex 字符，与帧头 sysid 字节一致）；task_36 起群发成员段已删除，终端只按 `targets` 逐车下发，该字段仅用于车辆注册与身份显示 |
 - **`Tool/robot_control.html` 已废弃**（旧 JSON 协议，不再维护；主力地面站为 Pictor）
 - Pictor 完成 libp2p 接入后，WS 链路与 `hello` 一并退役
 
@@ -271,50 +271,49 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 映射：`ORION_MANUAL_CONTROL` → `Command::Manual(ManualCmd::*)` / `Command::Mode(ModeCmd::*)`。
 
-### 3.5 ORION_TASK_SET（msgid 5）— 任务队列替换 / 群发
+### 3.5 ORION_TASK_SET（msgid 5）— 任务队列替换（一帧一车）
 
 **整体替换语义**（非追加）：收到即丢弃当前任务队列（含正在执行的任务，立即中断），装载新队列从头执行。
 
-**群发扩展（Task 22 / Orion task_14，2026-08-12）**：payload 新增成员段，支持单车/群发/取消三分支：
+**task_36 修订（2026-10-27）**：删除群发名单段（旧 `member` 段），协同分配上移到指挥层——地面站**逐车算点、逐车单独发帧**，每帧 `missions[0]` 就是"该车自己的点"；车端不再做任何分配（`planning/assignment.rs` 已删）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `mission_count` | uint8 | 任务数；协议上限 255 |
-| `member_count` | uint8 | 成员数；**0 = 取消全部任务（停车待命）** |
-| `members[]` | 结构数组 | 每项 = `len` u8 + `peer_id` 变长字节（单成员 ≤255B，通常 38B） |
-| `missions[]` | 结构数组 | 每项 9 字节（见下） |
+| `mission_count` | uint8 | 任务数（协议上限 255）；**0 = 取消全部任务（停车待命）** |
+| `missions[]` | 结构数组 | 每项 9 字节（见下），共 `mission_count` 条 |
 
-`missions[i]`：
+`missions[i]`（9 字节）：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `type` | uint8 | 任务类型：0 = `Goto`，1 = `Circle`（其余类型预留扩展） |
-| `x` | float | 目标点 X（全局世界坐标，米）；`Circle` 时为圆心 X |
-| `y` | float | 目标点 Y（全局世界坐标，米）；`Circle` 时为圆心 Y |
+| `type` | uint8 | 任务类型：0 = `Goto`；1 起为保留值（旧 `Circle` 已随 task_36 §十一 #27 删除，车端丢弃） |
+| `x` | float | 目标点 X（全局世界坐标，米，x 东） |
+| `y` | float | 目标点 Y（全局世界坐标，米，y 南） |
 
-> `Circle`（Task 24 / Orion task_18，2026-08-16）：半径**写死 0.5m**（= 与圆心隔 1 格，车端 `ring_cells(2)` 16 格），不进协议；车按 peer_id 字节升序排序后在环上**均匀铺开**（`idx·len/N`），第一版到达即停、不朝圆心；单车（member_count=1）落环第一个位置（正北）。见 `multi_robot_control.md` §4.3。
-
-**payload 布局**（大端）：
+**payload 布局**（大端，总长 = `1 + 9 × mission_count`）：
 
 | 偏移 | 字段 | 类型 |
 |---|---|---|
 | 0 | `mission_count` | u8 |
-| 1 | `member_count` | u8 |
-| 2 | `members[member_count]` | 每项 = `len` u8 + 变长字节 |
-| ... | `missions[mission_count]` | 每项 9 字节 |
+| `1 + 9i` | `missions[i].type` | u8 |
+| `2 + 9i` | `missions[i].x` | f32 |
+| `6 + 9i` | `missions[i].y` | f32 |
 
-`missions[i]` 布局（9 字节）：`type` u8 + `x` f32 + `y` f32
+**语义**（task_36 §12.3.4）：
 
-**三分支语义**（2026-08-12 定稿）：
-- `member_count == 0` → **取消全部任务**（replace 空队列，老 count=0 取消语义）
-- `member_count == 1` → 单车任务（members 仅本车，目标点精确执行）
-- `member_count > 1` → 群发任务（取 missions 第一个 `Goto` 或 `Circle` 为目标点，每辆车按统一确定性算法散布分配）
+| 条件 | 语义 |
+|---|---|
+| `mission_count == 0` | **取消**（空队列替换，停车待命）——唯一取消入口；payload 为 1 字节 `00` |
+| `mission_count > 0` 且 `type == 0` | `Mission::Goto { x, y }` 逐条入队 |
+| `mission_count > 0` 且 `type != 0` | 车端该条 `warn` + 丢弃；**若全部被丢 → 整帧不生效（队列不动）** |
+| 长度 ≠ `1 + 9 × mission_count` | 整帧拒收（`decode_task_set → None`）；**带成员段的旧帧即在此被拒** |
 
-行为约束（2026-08-07 决策 + 2026-08-12 扩展）：
+行为约束：
 - **替换**：新队列到达即替换旧队列，不合并、不追加
 - **立即中断**：正在执行的任务立即终止（`executor.reset()` + `stm32.stop()`），从新队列第一个任务开始
-- **空队列 + 空成员 = 取消**：`mission_count=0` 且 `member_count=0` 即取消全部任务，车停车待命
-- ⚠️ **同批升级**：字节格式变更，车端 + Pictor 同批上线，无过渡期（老 Pictor 旧帧 → 车端全拒）
+- **一帧一车**：协同已上移（task_36 §十一 #27），地面站对每辆车各发一帧，帧内只有该车自己的目标点；`targets` 传多辆车时 `KernelBridge` 会告警
+- **Pictor 侧不生成 `type != 0`**：`Encode_Task_Set` 对非 0 类型强制降级为 `Goto` 并 `printerr`
+- ⚠️ **同批升级**：字节格式变更，车端 + Pictor 同批上线，无过渡期（旧帧因长度校验必然被拒）
 
 ---
 
