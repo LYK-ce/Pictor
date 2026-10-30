@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Date ： 2026-08-07
-## Modified Date ： 2026-10-29
+## Modified Date ： 2026-10-30
 ##
 ## ProtocolDef — Orion 统一协议常量定义
 ## 规范文档：docs/orion_protocol.md
@@ -22,6 +22,9 @@ const MSGID_MAP_FULL := 2
 const MSGID_MAP_DELTA := 3
 const MSGID_MANUAL_CONTROL := 4
 const MSGID_TASK_SET := 5
+## UAV → 地面站的协助请求（task_41 §5.3）：payload = x f32 BE | y f32 BE（严格 8 B）
+## 单向：只有地面站订阅（Kernel 侧 [Network].subscribe_topics），车/机不发也不订阅。
+const MSGID_ASSIST_REQUEST := 7
 
 
 # ─── ORION_MANUAL_CONTROL action 枚举 ────────────────────────
@@ -44,20 +47,26 @@ const MANUAL_DEFAULT_SPEED := 50   # Task 25：车端已忽略速度档位（for
 
 # ─── ORION_TASK_SET mission type ─────────────────────────────
 
-## 车端 `command_decode` 认的 type：0 = Goto、2 = Follow（task_37 §五.2）。
-## 车栈的 Follow 是**平凡树**（一拍 Success + warn，task_37 D-S6），机栈才是真跟随。
-## 不在 {0,2} 的条目会被 `Encode_Task_Set` 降级成 0 并告警；旧值 1（Circle）已随
-## task_36 §十一 #27 废弃，常量删除、不得复用。
+## 车端 `command_decode` 认的 type：0 = Goto、2 = Follow（task_37 §五.2）、
+## 3 = Containment 封控（task_41 §3.2：x/y = 正方形中心，half_side = 半边长 m）。
+## TASK_SET 记录**按 type 变长**（0/2 = 9 B、3 = 13 B）。不在 {0,2,3} 的条目由
+## `Encode_Task_Set` 报错并**返回空数组（整帧不发）**，不再降级成 Goto；
+## 旧值 1（Circle）已随 task_36 §十一 #27 废弃，常量删除、不得复用。
+## Containment 只有 sim 机栈真实现；真车 / 真机 / sim 车栈建平凡树（一拍 Success + warn）。
 const MISSION_TYPE_GOTO := 0
 const MISSION_TYPE_FOLLOW := 2
+const MISSION_TYPE_CONTAINMENT := 3
 
-## 字符串/数字 → mission type 整数（"goto"/未知字符串 → 0；"follow" → 2；数字原样返回）
+## 字符串/数字 → mission type 整数（"goto"/未知字符串 → 0；"follow" → 2；"containment"/"contain" → 3；
+## 数字原样返回 —— 数字的合法性由 `Encode_Task_Set` 门控，本函数不造白名单）
 ## "circle" 的环形几何已上移到地面站（TargetAlloc.compute_targets 的 shape 参数），不进协议
 static func Mission_Type_From(t) -> int:
 	if t is String:
 		match str(t).strip_edges().to_lower():
 			"follow":
 				return MISSION_TYPE_FOLLOW
+			"containment", "contain":
+				return MISSION_TYPE_CONTAINMENT
 			_:
 				return MISSION_TYPE_GOTO
 	return int(t)

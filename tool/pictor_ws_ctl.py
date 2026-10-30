@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Presented by KeJi
 # Created Date ： 2026-10-29
-# Modified Date ： 2026-10-29
+# Modified Date ： 2026-10-30
 #
 # pictor_ws_ctl.py — Pictor WS 命令通道的 Python 控制脚本（task_40 Step 3 / 任务文档 §四）
 #
@@ -19,10 +19,12 @@
 #   python3 Pictor/tool/pictor_ws_ctl.py wait   --target ugv_1 [--timeout 40]
 #   python3 Pictor/tool/pictor_ws_ctl.py task   --target ugv_1 --x 70 --y 64 [--tol 0.3] [--frames 3]
 #   python3 Pictor/tool/pictor_ws_ctl.py follow --target uav_1 [--x 0 --y 0] [--type 2] [--watch 45]
+#   python3 Pictor/tool/pictor_ws_ctl.py containment --target uav_1 --cx 64 --cy 64 --half 8 [--watch 45]
 #   python3 Pictor/tool/pictor_ws_ctl.py monitor [--seconds 10] [--pose-hz 2] [--events pose,peer]
 #
 # `follow` 走 type=2（仅 WS 入口；`x`/`y` 在 Follow 语义下预留填 0）；
-# `--type 3` 只作「未知类型仍被降级」的探针（Pictor 会降级成 0 并告警）。
+# `containment` 走 type=3（`--cx/--cy` = 正方形中心、`--half` = 半边长 m，task_41 §3.2）；
+# `--type 9` 只作「未知类型 → **明确报错、一帧不发**」的探针（task_41 起不再降级成 Goto）。
 #
 # 退出码：0 = 断言通过；1 = 断言失败；2 = 环境错误（连不上 / 无 websockets / 参数非法）。
 #
@@ -61,15 +63,21 @@ FINAL_ERR_GATE_M = 2.0
 
 KNOWN_EVENTS = ("pose", "peer", "map_delta", "map_full")
 
-# ─── mission type（task_40 Step 4；与 `ProtocolDef` 同一套约定）─────────────
-# 车端 `command_decode` 认 {0 Goto, 2 Follow}；Pictor 的 `Encode_Task_Set` 对 ∉{0,2}
-# 的条目降级成 0 并告警。下面这些常量**只用于本地断言/日志**，真编码在 GDScript 侧。
+# ─── mission type（task_41 Step 1 起：变长记录 {0,2,3}；与 `ProtocolDef` 同一套约定）─────
+# TASK_SET 记录按 type 变长：0/2 = 9 B、3 = 13 B。Pictor 的 `Encode_Task_Set` 对 ∉{0,2,3}
+# 的条目**报错并返回空数组（不发帧）**，不再降级成 0。下面这些常量**只用于本地断言/日志**，
+# 真编码在 GDScript 侧；`mission_wire_len` 与 `_Mission_Wire_Len` 同口径。
 MISSION_TYPE_GOTO = 0
 MISSION_TYPE_FOLLOW = 2
-SUPPORTED_MISSION_TYPES = (MISSION_TYPE_GOTO, MISSION_TYPE_FOLLOW)
-FOLLOW_POSE_HZ = 10.0          # follow 的 pose 采样率（K3 要用 10 Hz 判"不打转"）
-# type=2、x=y=0 的 TASK_SET payload 金标（与 GDScript 单测同一枚）
-FOLLOW_GOLDEN_HEX = "01020000000000000000"
+MISSION_TYPE_CONTAINMENT = 3
+SUPPORTED_MISSION_TYPES = (MISSION_TYPE_GOTO, MISSION_TYPE_FOLLOW, MISSION_TYPE_CONTAINMENT)
+FOLLOW_POSE_HZ = 10.0          # follow / containment 的 pose 采样率（K3 要用 10 Hz 判"不打转"）
+
+# TASK_SET payload 金标（与 Rust `messages.rs` / GDScript `test_orion_protocol.gd` 同一串）
+GOTO_GOLDEN_HEX = "01004280000042800000"                              # type=0, x=y=64 → 10 B
+FOLLOW_GOLDEN_HEX = "01020000000000000000"                            # type=2, x=y=0  → 10 B
+CONTAINMENT_GOLDEN_HEX = "0103428000004280000041000000"               # type=3, cx=cy=64, half=8 → 14 B
+MIXED_GOLDEN_HEX = "0200428000004280000003428000004280000041000000"   # [Goto(64,64), Containment(64,64,8)] → 23 B
 
 
 class CtlError(Exception):
@@ -273,38 +281,66 @@ def emit_json(obj):
     print(json.dumps(obj, ensure_ascii=False), flush=True)
 
 
+def mission_wire_len(t):
+    """记录长度（含 type 字节）；0 = 未知 type（不产生字节、不发帧）。"""
+    return {
+        MISSION_TYPE_GOTO: 9,
+        MISSION_TYPE_FOLLOW: 9,
+        MISSION_TYPE_CONTAINMENT: 13,
+    }.get(t, 0)
+
+
+def _normalize_mission_type(t):
+    """字符串 → 整数（与 `ProtocolDef.Mission_Type_From` 同口径：未知字符串 → 0 Goto）。"""
+    if isinstance(t, str):
+        key = t.strip().lower()
+        if key == "follow":
+            return MISSION_TYPE_FOLLOW
+        if key in ("containment", "contain"):
+            return MISSION_TYPE_CONTAINMENT
+        return MISSION_TYPE_GOTO
+    try:
+        return int(t)
+    except (TypeError, ValueError):
+        return MISSION_TYPE_GOTO
+
+
 def expected_task_set_payload(missions):
-    """按 ORION_TASK_SET 布局（1 + 9n，type u8 | x f32 BE | y f32 BE）复刻 payload。
+    """按变长 ORION_TASK_SET 布局复刻 payload（task_41 §3.2）。
+
+    返回 {ok, hex, len, types, error}。**与 `Encode_Task_Set` 同口径**：
+      - 0/2 记录 9 B、3 记录 13 B；总长 1 + Σlen；
+      - type ∉ {0,2,3} → **不产生任何字节**（ok=False, hex=""），不再降级成 Goto；
+      - type=3 的 `half_side` 缺失 / 非数值 / 非有限 / <= 0 → 同样 ok=False。
 
     ⚠️ 这**不是协议实现**（真编码在 `src/websocket/protocol/orion_messages.gd`），
-    只用来在这里断言"将要发出去的帧"符合预期、并把 hex 记进 `--json` 便于比对。
-    降级规则与 `Encode_Task_Set` 一致：type ∉ {0,2} → 0（车端会丢，故本地先降级告警）。
+    只用来断言"将要发出去的帧"符合预期，并把 hex 记进 `--json` 便于比对。
     """
-    out = bytearray([len(missions)])
-    types, coerced = [], []
+    if len(missions) > 255:
+        return {"ok": False, "hex": "", "len": 0, "types": [],
+                "error": "missions exceed u8 max: %d（Pictor 会截断为 255）" % len(missions)}
+    body = bytearray()
+    types = []
     for m in missions:
-        t = m.get("type", MISSION_TYPE_GOTO)
-        if isinstance(t, str):
-            key = t.strip().lower()
-            if key == "follow":
-                t = MISSION_TYPE_FOLLOW
-            elif key == "goto":
-                t = MISSION_TYPE_GOTO
-            else:
-                t = MISSION_TYPE_GOTO
-        else:
-            try:
-                t = int(t)
-            except (TypeError, ValueError):
-                t = MISSION_TYPE_GOTO
-        co = t not in SUPPORTED_MISSION_TYPES
-        wire = MISSION_TYPE_GOTO if co else t
-        types.append(wire)
-        coerced.append(co)
-        out.append(wire & 0xFF)
-        out += struct.pack(">f", float(m.get("x", 0.0)))
-        out += struct.pack(">f", float(m.get("y", 0.0)))
-    return {"hex": out.hex(), "len": len(out), "types": types, "coerced": coerced}
+        t = _normalize_mission_type(m.get("type", MISSION_TYPE_GOTO))
+        ln = mission_wire_len(t)
+        if ln == 0:
+            return {"ok": False, "hex": "", "len": 0, "types": types,
+                    "error": "unsupported mission type: %d（Pictor 不发帧）" % t}
+        if t == MISSION_TYPE_CONTAINMENT:
+            h = m.get("half_side", None)
+            if isinstance(h, bool) or not isinstance(h, (int, float)) \
+                    or not math.isfinite(float(h)) or float(h) <= 0.0:
+                return {"ok": False, "hex": "", "len": 0, "types": types,
+                        "error": "bad half_side: %r（必须有限且 > 0）" % (h,)}
+        body.append(t & 0xFF)
+        body += struct.pack(">f", float(m.get("x", 0.0)))
+        body += struct.pack(">f", float(m.get("y", 0.0)))
+        if ln == 13:
+            body += struct.pack(">f", float(m["half_side"]))
+        types.append(t)
+    out = bytearray([len(types)]) + body
+    return {"ok": True, "hex": out.hex(), "len": len(out), "types": types, "error": ""}
 
 
 def fail_json(obj, code=EXIT_FAIL, quiet=False):
@@ -511,11 +547,13 @@ async def cmd_task(client, args):
     return EXIT_OK
 
 
-async def cmd_follow(client, args):
-    """发一帧 `TASK_SET`（默认 type=2 Follow），断言帧布局，并可 `--watch N` 秒采样 pose。
+async def _send_single_mission(client, args, mission, tag):
+    """发一帧**单条** `TASK_SET`，先做本地变长布局断言，再可选 `--watch N` 秒采样 pose。
 
-    Follow 语义下 `x`/`y` 预留填 0（任务文档 §五.6：不改 Follow{x,y} 语义）。
-    `--type 3` 只作判据 4 的探针：本地先按同一规则算出"Pictor 会降级成 0"，再发出去比对。
+    两条路径：
+      - 正常：`expected_task_set_payload` 能编出字节 → 断言长度 / count / type / 金标 → 发；
+      - 未知 type 探针（如 `--type 9`）：本地编码器按 `Encode_Task_Set` 口径拒编（`ok=False`）
+        → 断言 Pictor 的 ack 是 `ok:false` 且 error 明确（"mission type" / "half_side"），即**一帧未发**。
     """
     t_start = time.monotonic()
     reg_window = min(args.register_timeout, max(1.0, args.timeout * 0.5))
@@ -525,26 +563,36 @@ async def cmd_follow(client, args):
         % (args.target, target_vid, how or "<未注册>"), args.quiet)
 
     targets = args.targets or [args.target]
-    mission = {"type": int(args.type), "x": float(args.x), "y": float(args.y)}
     spec = expected_task_set_payload([mission])
-    type_on_wire = spec["types"][0]
-    coerced = bool(spec["coerced"][0])
-    if coerced:
-        log("[ctl] 注意：--type %s 不在 {0,2} → Pictor 会降级成 0 并告警（判据 4 的探针）"
-            % args.type, args.quiet)
-
     out = {
         "ok": False,
-        "cmd": "follow",
+        "cmd": tag,
         "target": args.target,
         "target_vid": target_vid,
         "resolved_by": how,
         "mission": mission,
         "payload_hex": spec["hex"],
         "payload_len": spec["len"],
-        "type_on_wire": type_on_wire,
-        "coerced": coerced,
+        "type_on_wire": mission["type"],
     }
+
+    # ⓪ 未知 type / 非法 half_side 探针：本地按同一口径拒编 → 看 Pictor 是否明确拒绝且不发帧
+    if not spec["ok"]:
+        out["expect_reject"] = True
+        out["expect_reject_reason"] = spec["error"]
+        ack = await client.cmd({"cmd": "task_set", "targets": targets, "missions": [mission]})
+        out["ack"] = ack.get("ack")
+        err = str(ack.get("error", ""))
+        if ack.get("ok", False) or ("mission type" not in err and "half_side" not in err):
+            out["error"] = "非法 mission（%s）未被明确拒绝：ack=%s" % (spec["error"], ack)
+            return fail_json(out, EXIT_FAIL, args.quiet)
+        out.update({"ok": True, "ack_ok": False})
+        log("[ctl] 非法 mission 被 Pictor 明确拒绝（ack ok:false），一帧未发：%s" % err, args.quiet)
+        if args.json:
+            emit_json(out)
+        return EXIT_OK
+
+    type_on_wire = spec["types"][0]
 
     # ① 先订阅 pose（--watch 采样要用；发前开，避免丢首帧）
     ack = await client.cmd({"cmd": "subscribe", "events": ["pose"],
@@ -561,17 +609,27 @@ async def cmd_follow(client, args):
             return fail_json(out, EXIT_FAIL, args.quiet)
         log("[ctl] mode → %s 已下发（ack 生效）" % args.mode, args.quiet)
 
-    # ③ 本地帧布局断言（不合规就不发，避免把错帧算到 Pictor 头上）
+    # ③ 本地帧布局断言（按 type 变长；不合规就不发，避免把错帧算到 Pictor 头上）
     bad = []
-    if spec["len"] != 1 + 9 * 1:
-        bad.append("payload_len=%d（期望 %d）" % (spec["len"], 1 + 9))
+    expect_len = 1 + mission_wire_len(type_on_wire)
+    if spec["len"] != expect_len:
+        bad.append("payload_len=%d（期望 %d）" % (spec["len"], expect_len))
     if int(spec["hex"][0:2], 16) != 1:
         bad.append("mission_count=%s（期望 1）" % spec["hex"][0:2])
     if int(spec["hex"][2:4], 16) != type_on_wire:
         bad.append("type 字节=%s（期望 %d）" % (spec["hex"][2:4], type_on_wire))
-    if int(args.type) == MISSION_TYPE_FOLLOW and float(args.x) == 0.0 and float(args.y) == 0.0:
-        if spec["hex"] != FOLLOW_GOLDEN_HEX:
-            bad.append("金标不符 %s（期望 %s）" % (spec["hex"], FOLLOW_GOLDEN_HEX))
+    # 金标：三组定值（与 GDScript / Rust 单测同一串）
+    golden = None
+    mx, my = float(mission.get("x", 0.0)), float(mission.get("y", 0.0))
+    if type_on_wire == MISSION_TYPE_FOLLOW and mx == 0.0 and my == 0.0:
+        golden = FOLLOW_GOLDEN_HEX
+    elif type_on_wire == MISSION_TYPE_GOTO and mx == 64.0 and my == 64.0:
+        golden = GOTO_GOLDEN_HEX
+    elif type_on_wire == MISSION_TYPE_CONTAINMENT and mx == 64.0 and my == 64.0 \
+            and float(mission.get("half_side", 0.0)) == 8.0:
+        golden = CONTAINMENT_GOLDEN_HEX
+    if golden is not None and spec["hex"] != golden:
+        bad.append("金标不符 %s（期望 %s）" % (spec["hex"], golden))
     if bad:
         out["error"] = "本地帧布局断言失败：" + "；".join(bad)
         return fail_json(out, EXIT_FAIL, args.quiet)
@@ -586,8 +644,8 @@ async def cmd_follow(client, args):
         out["error"] = ack.get("error", "<无 error>")
         return fail_json(out, EXIT_FAIL, args.quiet)
     out["ack_ok"] = True
-    log("[ctl] task_set 已交给 kernel：type=%d→wire %d payload=%s（%d B；⚠ 不等于车端收到）"
-        % (int(args.type), type_on_wire, spec["hex"], spec["len"]), args.quiet)
+    log("[ctl] task_set 已交给 kernel：type=%d payload=%s（%d B；⚠ 不等于车端收到）"
+        % (type_on_wire, spec["hex"], spec["len"]), args.quiet)
 
     # ⑤ --watch：按 pose_hz 采样位姿帧（K3 的轨迹证据；不判定到达）
     samples = 0
@@ -626,6 +684,32 @@ async def cmd_follow(client, args):
     if args.json:
         emit_json(out)
     return EXIT_OK
+
+
+async def cmd_follow(client, args):
+    """发一帧 `TASK_SET`（默认 type=2 Follow），断言变长帧布局，并可 `--watch N` 秒采样 pose。
+
+    Follow 语义下 `x`/`y` 预留填 0（任务文档 §五.6：不改 Follow{x,y} 语义）。
+    `--type 9` 只作未知类型探针：task_41 §3.2 起改为「明确报错、一帧不发」（不再降级成 Goto）。
+    """
+    mission = {"type": int(args.type), "x": float(args.x), "y": float(args.y)}
+    return await _send_single_mission(client, args, mission, "follow")
+
+
+async def cmd_containment(client, args):
+    """发一帧 `TASK_SET`（type=3 Containment：`--cx/--cy` 正方形中心 + `--half` 半边长），断言 14 B 布局。
+
+    金标：`--cx 64 --cy 64 --half 8` → `CONTAINMENT_GOLDEN_HEX`（14 B）。
+    只有 **sim 机栈**真跑封控树（正方形内巡逻 / 见人在界内则跟随 / 出界回巡逻）；
+    真车 / 真机 / sim 车栈建平凡树（一拍 Success，任务文档 §二.6）。
+    """
+    mission = {
+        "type": MISSION_TYPE_CONTAINMENT,
+        "x": float(args.cx),
+        "y": float(args.cy),
+        "half_side": float(args.half),
+    }
+    return await _send_single_mission(client, args, mission, "containment")
 
 
 async def cmd_monitor(client, args):
@@ -695,7 +779,7 @@ def build_parser():
     common.add_argument("--port", type=int, default=DEFAULT_PORT, help="Pictor 的 --ws-port（默认 9100）")
     common.add_argument("--host", default=DEFAULT_HOST)
     common.add_argument("--pose-hz", type=float, default=None,
-                        help="pose 降频（默认：follow 为 10，其余为 %g；0 = 不限频）" % DEFAULT_POSE_HZ)
+                        help="pose 降频（默认：follow/containment 为 10，其余为 %g；0 = 不限频）" % DEFAULT_POSE_HZ)
     common.add_argument("--events", default=DEFAULT_EVENTS,
                         help="订阅的事件集，逗号分隔（可用 pose/peer/map_delta/map_full）")
     common.add_argument("--targets", default="", help="按车名/vid 过滤，逗号分隔；空 = 全部")
@@ -738,13 +822,26 @@ def build_parser():
     p.add_argument("--x", type=float, default=0.0, help="Follow 语义下预留，默认 0")
     p.add_argument("--y", type=float, default=0.0, help="Follow 语义下预留，默认 0")
     p.add_argument("--type", type=int, default=MISSION_TYPE_FOLLOW,
-                   help="mission type（默认 2=Follow；3 = 「未知类型仍降级」探针）")
+                   help="mission type（默认 2=Follow；9 = 未知类型探针 → 断言「明确报错 / 不发帧」）")
     p.add_argument("--watch", type=float, default=0.0, help="发完采样 pose 的墙钟秒数（默认 0）")
     p.add_argument("--mode", default="auto", choices=["none", "auto", "manual"],
                    help="发之前先切模式（默认 auto）")
     p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     p.add_argument("--register-timeout", type=float, default=DEFAULT_REGISTER_TIMEOUT_S)
     p.set_defaults(func=cmd_follow)
+
+    p = sub.add_parser("containment", parents=[common],
+                       help="发一帧 TASK_SET（type=3 封控：--cx/--cy 中心，--half 半边长）")
+    p.add_argument("--target", required=True, help="车名或 hex vid")
+    p.add_argument("--cx", type=float, required=True, help="正方形中心 x（世界米）")
+    p.add_argument("--cy", type=float, required=True, help="正方形中心 y（世界米）")
+    p.add_argument("--half", type=float, required=True, help="半边长（米，> 0）")
+    p.add_argument("--watch", type=float, default=0.0, help="发完采样 pose 的墙钟秒数（默认 0）")
+    p.add_argument("--mode", default="auto", choices=["none", "auto", "manual"],
+                   help="发之前先切模式（默认 auto）")
+    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
+    p.add_argument("--register-timeout", type=float, default=DEFAULT_REGISTER_TIMEOUT_S)
+    p.set_defaults(func=cmd_containment)
 
     p = sub.add_parser("monitor", parents=[common], help="订阅并统计事件（判据 4 用）")
     p.add_argument("--seconds", type=float, default=10.0)
@@ -753,10 +850,10 @@ def build_parser():
 
 
 def resolve_pose_hz(args):
-    """`--pose-hz` 缺省值按子命令定：follow → 10 Hz（K3 轨迹），其余 → §八 #5 的 2 Hz。"""
+    """`--pose-hz` 缺省值按子命令定：follow / containment → 10 Hz（K3 轨迹），其余 → §八 #5 的 2 Hz。"""
     if args.pose_hz is not None:
         return float(args.pose_hz)
-    return FOLLOW_POSE_HZ if args.cmd == "follow" else DEFAULT_POSE_HZ
+    return FOLLOW_POSE_HZ if args.cmd in ("follow", "containment") else DEFAULT_POSE_HZ
 
 
 def build_url(args):

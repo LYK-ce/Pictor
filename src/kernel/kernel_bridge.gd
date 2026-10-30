@@ -1,9 +1,11 @@
 extends Node
 ## Presented by KeJi
 ## Date ： 2026-09-01
+## Modified Date ： 2026-10-30
 ##
 ## KernelBridge — Rust 桥（PleiadesKernel）与 EventBus 的适配器
 ## 上行：robot_frame → parse_orion_frame → EventBus（pose/map）；peer_* → registered/unregistered/name
+##       msgid 7（协助请求）→ assist_request_received(vid, x, y)
 ## 下行：EventBus.cmd_send → OrionMessages.Build_Cmd → kernel.send_command
 ## peer_discovered / peer_left 不消费（决策 #6/#7，mDNS 发现态不建面板）
 
@@ -48,6 +50,9 @@ func _on_robot_frame(data: PackedByteArray) -> void:
 			EventBus.map_full_received.emit(vid, d.get("chunk_x", 0), d.get("chunk_y", 0), d.get("cells", PackedByteArray()))
 		ProtocolDef.MSGID_MAP_DELTA:
 			EventBus.map_delta_received.emit(r.data.get("voxels", []))
+		ProtocolDef.MSGID_ASSIST_REQUEST:
+			# 上行协助请求（UAV → 地面站）：vid = 请求者 sysid；只有 coop_controller 消费
+			EventBus.assist_request_received.emit(vid, float(r.data.get("x", 0.0)), float(r.data.get("y", 0.0)))
 		_:
 			# MANUAL_CONTROL / TASK_SET 为下行消息，不从车上行，忽略
 			pass

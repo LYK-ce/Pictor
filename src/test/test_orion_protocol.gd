@@ -2,13 +2,15 @@ extends SceneTree
 
 ## Presented by KeJi
 ## Date ： 2026-08-11
-## Modified Date ： 2026-10-29
+## Modified Date ： 2026-10-30
 ##
 ## Orion 协议 v2 编解码 roundtrip 测试（headless）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
 ## 覆盖：帧/消息 roundtrip（v2 变长 sysid）+ 大端字节序断言（与 Rust 端字节比对）
 ## Task 21：地图改 log-odds 语义（delta i8 位模式 / clamp / 阈值派生边界）
-## task_40 Step 4：Follow(type=2) 放开（`_test_follow_task_set`），∉{0,2} 仍降级
+## task_40 Step 4：Follow(type=2) 放开（`_test_follow_task_set`）
+## task_41 Step 1：Containment(type=3) + TASK_SET **按 type 变长**（0/2 = 9B、3 = 13B），
+##                 ∉{0,2,3} 由 Encode 报错并**返回空数组（不发帧）**，不再降级成 Goto
 
 func _init() -> void:
 	var ok := true
@@ -25,6 +27,8 @@ func _init() -> void:
 	ok = ok and _test_llm_missions()
 	ok = ok and _test_circle_task_set()
 	ok = ok and _test_follow_task_set()
+	ok = ok and _test_containment_task_set()
+	ok = ok and _test_assist_request()
 	ok = ok and _test_target_alloc()
 	ok = ok and _test_log_odds_signed()
 	ok = ok and _test_clamp()
@@ -341,11 +345,10 @@ func _test_circle_task_set() -> bool:
 	if ProtocolDef.Mission_Type_From(1) != 1:
 		print("FAIL mission_type_from int passthrough"); return false
 
-	# Encode 降级门控：整数 type=1 也被改成 0（车端只认 Goto，静默丢任务更糟）
+	# Encode 门控（task_41 §3.2 起**不再降级**）：整数 type=1（退役 Circle）→ printerr + 空数组
 	var payload_int := OrionMessages.Encode_Task_Set([{"type": 1, "x": 3.0, "y": 4.0}])
-	var dec_int := OrionMessages.Decode_Task_Set(payload_int)
-	if dec_int.missions[0].type != ProtocolDef.MISSION_TYPE_GOTO:
-		print("FAIL int circle type not coerced: ", dec_int.missions[0]); return false
+	if not payload_int.is_empty():
+		print("FAIL retired circle type=1 must not encode: ", payload_int); return false
 
 	# build_task_set 字符串 "circle" 归一化（LLM 链路）→ Goto，且 1 + 9n 可编码
 	var ms := MessageBuilder.build_task_set([{"type": "circle", "x": 3.0, "y": 4.0}])
@@ -423,18 +426,119 @@ func _test_follow_task_set() -> bool:
 	if pm[1] != ProtocolDef.MISSION_TYPE_FOLLOW or pm[10] != ProtocolDef.MISSION_TYPE_GOTO:
 		print("FAIL mixed payload types: ", pm[1], pm[10]); return false
 
-	# ⑥ 门控没放松：type=3 / type=1 仍被降级成 0 并告警（这里的 printerr 是预期输出）
+	# ⑥ 门控收紧（task_41 §3.2）：type=3 缺 `half_side` / type=1（退役 Circle）→
+	#    **返回空数组（不降级、不发帧）**（这里的 printerr 是预期输出）
 	var p3 := OrionMessages.Encode_Task_Set([{"type": 3, "x": 0.0, "y": 0.0}])
-	if p3.size() != 10 or p3[1] != ProtocolDef.MISSION_TYPE_GOTO:
-		print("FAIL type=3 must be coerced to Goto: ", p3); return false
+	if not p3.is_empty():
+		print("FAIL type=3 without half_side must not encode: ", p3); return false
 	var p1 := OrionMessages.Encode_Task_Set([{"type": 1, "x": 0.0, "y": 0.0}])
-	if p1[1] != ProtocolDef.MISSION_TYPE_GOTO:
-		print("FAIL type=1 must be coerced to Goto: ", p1); return false
+	if not p1.is_empty():
+		print("FAIL type=1 must not encode: ", p1); return false
 	# 数字直通到 Encode 之前：门控在 Encode，不在 Mission_Type_From
 	if ProtocolDef.Mission_Type_From(3) != 3:
 		print("FAIL mission_type_from int 3 passthrough"); return false
 
 	print("PASS follow_task_set"); return true
+
+
+# ─── task_41 §3.2：Containment(type=3) + 变长 TASK_SET ────────────────────
+
+func _test_containment_task_set() -> bool:
+	# ① 常量 + 归一化（"containment"/"contain" → 3；整数原样；"circle"/未知 仍是 0）
+	if ProtocolDef.MISSION_TYPE_CONTAINMENT != 3:
+		print("FAIL MISSION_TYPE_CONTAINMENT != 3"); return false
+	if ProtocolDef.Mission_Type_From("containment") != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL mission_type_from containment"); return false
+	if ProtocolDef.Mission_Type_From("CONTAIN") != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL mission_type_from CONTAIN case"); return false
+	if ProtocolDef.Mission_Type_From(" containment ") != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL mission_type_from containment trimmed"); return false
+	if ProtocolDef.Mission_Type_From(3) != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL mission_type_from int 3 passthrough"); return false
+	if ProtocolDef.Mission_Type_From("circle") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from circle must stay Goto"); return false
+
+	# ② 单条 {3, 64, 64, 8} → 14B，金标 0103428000004280000041000000
+	#    （与 Rust `test_task_set_containment_golden` / Python `CONTAINMENT_GOLDEN_HEX` 同一枚）
+	var p := OrionMessages.Encode_Task_Set([{"type": 3, "x": 64.0, "y": 64.0, "half_side": 8.0}])
+	if p.size() != 14 or p[0] != 1:
+		print("FAIL containment payload size/count: ", p.size()); return false
+	if p[1] != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL containment type byte: ", p[1]); return false
+	if p.hex_encode() != "0103428000004280000041000000":
+		print("FAIL containment golden bytes: ", p.hex_encode()); return false
+
+	# ③ 混合 [Goto(64,64), Containment(64,64,8)] → 23B；[1]=0、[10]=3、[19..23]=41000000
+	var pm := OrionMessages.Encode_Task_Set([
+		{"type": 0, "x": 64.0, "y": 64.0},
+		{"type": 3, "x": 64.0, "y": 64.0, "half_side": 8.0},
+	])
+	if pm.size() != 23 or pm[0] != 2:
+		print("FAIL mixed containment size/count: ", pm.size()); return false
+	if pm[1] != ProtocolDef.MISSION_TYPE_GOTO or pm[10] != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL mixed containment types: ", pm[1], pm[10]); return false
+	if pm.slice(19, 23) != PackedByteArray([0x41, 0x00, 0x00, 0x00]):
+		print("FAIL mixed containment half_side BE: ", pm.slice(19, 23)); return false
+	if pm.hex_encode() != "0200428000004280000003428000004280000041000000":
+		print("FAIL mixed containment golden bytes: ", pm.hex_encode()); return false
+
+	# ④ 整帧 roundtrip：half_side 往返；非 3 的 half_side 恒 0.0
+	var frame := OrionMessages.Build_Cmd(MessageBuilder.build_task_set([
+		{"type": "containment", "x": 64.0, "y": 64.0, "half_side": 8.0},
+		{"type": "goto", "x": 1.0, "y": 2.0},
+	]))
+	if frame.is_empty():
+		print("FAIL containment Build_Cmd empty"); return false
+	var dec_f := OrionFrame.Decode_Frame(frame)
+	if not dec_f.ok:
+		print("FAIL containment frame decode: ", dec_f.error); return false
+	var ts := OrionMessages.Decode_Task_Set(dec_f.payload)
+	if not ts.ok or ts.mission_count != 2:
+		print("FAIL containment roundtrip: ", ts); return false
+	if ts.missions[0].type != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+		print("FAIL containment roundtrip type: ", ts.missions[0]); return false
+	if absf(ts.missions[0].half_side - 8.0) > 0.0001:
+		print("FAIL containment roundtrip half_side: ", ts.missions[0]); return false
+	if absf(ts.missions[1].half_side) > 0.0001:
+		print("FAIL goto half_side must be 0.0: ", ts.missions[1]); return false
+
+	# ⑤ 未知 type（9 / 退役 1）→ Encode 返回空数组、Build_Cmd 返回空帧（不降级、不发帧）
+	if not OrionMessages.Encode_Task_Set([{"type": 9, "x": 0.0, "y": 0.0}]).is_empty():
+		print("FAIL unknown type 9 must not encode"); return false
+	if not OrionMessages.Build_Cmd(
+			MessageBuilder.build_task_set([{"type": 9, "x": 0.0, "y": 0.0}])).is_empty():
+		print("FAIL unknown type 9 must not build frame"); return false
+	if not OrionMessages.Encode_Task_Set([{"type": 1, "x": 0.0, "y": 0.0}]).is_empty():
+		print("FAIL retired circle type 1 must not encode"); return false
+
+	# ⑥ type=3 的 half_side 门控：缺失 / 0 / 负数 / NaN → 空数组（整帧不发）
+	for bad in [null, 0.0, -1.0, NAN]:
+		var item2 := {"type": 3, "x": 64.0, "y": 64.0}
+		if bad != null:
+			item2["half_side"] = bad
+		if not OrionMessages.Encode_Task_Set([item2]).is_empty():
+			print("FAIL bad half_side accepted: ", bad); return false
+
+	# ⑦ Decode：未知 type / 截断 / 多 1B / half_side=0 → ok == false
+	var raw_unknown := PackedByteArray([1, 9, 0, 0, 0, 0, 0, 0, 0, 0])
+	if OrionMessages.Decode_Task_Set(raw_unknown).ok:
+		print("FAIL decode unknown type accepted"); return false
+	var raw_short := PackedByteArray([1, 3, 0x42, 0x80, 0x00, 0x00])
+	if OrionMessages.Decode_Task_Set(raw_short).ok:
+		print("FAIL decode truncated containment accepted"); return false
+	var raw_tail := p.duplicate()
+	raw_tail.append(0)
+	if OrionMessages.Decode_Task_Set(raw_tail).ok:
+		print("FAIL decode trailing byte accepted"); return false
+	var raw_zero_half := p.duplicate()
+	raw_zero_half[10] = 0x00
+	raw_zero_half[11] = 0x00
+	raw_zero_half[12] = 0x00
+	raw_zero_half[13] = 0x00
+	if OrionMessages.Decode_Task_Set(raw_zero_half).ok:
+		print("FAIL decode half_side=0 accepted"); return false
+
+	print("PASS containment_task_set"); return true
 
 
 # ─── Task 21：log-odds 语义边界用例 ────────────────────────────
@@ -676,3 +780,42 @@ func _test_target_alloc() -> bool:
 	if pts_circle["b"] != anchor or pts_circle["c"] != anchor:
 		print("FAIL compute_targets shape ignored: ", pts_circle); return false
 	print("PASS target_alloc"); return true
+
+
+# ─── task_41 §5.3：ASSIST_REQUEST（msgid 7，上行 8B）─────────────────────
+
+func _test_assist_request() -> bool:
+	if ProtocolDef.MSGID_ASSIST_REQUEST != 7:
+		print("FAIL MSGID_ASSIST_REQUEST != 7"); return false
+	# ① 金标：x=1.0 → 3F800000、y=2.0 → 40000000（与 Rust `test_assist_request_golden` 同一串）
+	var p := PackedByteArray()
+	p.resize(8)
+	OrionFrame.Write_F32_BE(p, 0, 1.0)
+	OrionFrame.Write_F32_BE(p, 4, 2.0)
+	if p.hex_encode() != "3f80000040000000":
+		print("FAIL assist golden bytes: ", p.hex_encode()); return false
+	var d := OrionMessages.Decode_Assist_Request(p)
+	if not d.ok or absf(d.x - 1.0) > 1e-6 or absf(d.y - 2.0) > 1e-6:
+		print("FAIL assist decode: ", d); return false
+	# ② 长度严格：7B / 9B / 空 → 拒
+	if OrionMessages.Decode_Assist_Request(p.slice(0, 7)).ok:
+		print("FAIL assist 7B accepted"); return false
+	var nine := p.duplicate(); nine.append(0)
+	if OrionMessages.Decode_Assist_Request(nine).ok:
+		print("FAIL assist 9B accepted"); return false
+	if OrionMessages.Decode_Assist_Request(PackedByteArray()).ok:
+		print("FAIL assist empty accepted"); return false
+	# ③ 非有限值拒（与 Rust `decode_assist_request` 同口径）
+	var nan_p := PackedByteArray(); nan_p.resize(8)
+	OrionFrame.Write_F32_BE(nan_p, 0, NAN)
+	OrionFrame.Write_F32_BE(nan_p, 4, 0.0)
+	if OrionMessages.Decode_Assist_Request(nan_p).ok:
+		print("FAIL assist NaN accepted"); return false
+	# ④ parser 分发：msgid 7 + 1B sysid（模拟 UAV 身份）
+	var frame := OrionFrame.Encode_Frame(7, PackedByteArray([7]), 1, p)
+	var r := MessageParser.parse_orion_frame(frame)
+	if not r.ok or r.msgid != 7:
+		print("FAIL parser assist: ", r); return false
+	if r.sysid != PackedByteArray([7]) or absf(r.data.x - 1.0) > 1e-6:
+		print("FAIL parser assist fields: ", r); return false
+	print("PASS assist_request"); return true

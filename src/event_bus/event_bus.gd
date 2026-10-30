@@ -1,6 +1,7 @@
 extends Node
 ## Presented by KeJi
 ## Date ： 2026-09-01
+## Modified Date ： 2026-10-30
 ##
 ## EventBus — 全局事件总线（Autoload 单例）
 
@@ -16,6 +17,8 @@ signal peer_info_updated(vehicle_id: String, peer_name: String, node_type: Strin
 signal selection_changed(id: String)
 ## targets = 目标车辆列表（hex vehicle_id）；TASK_SET 一帧一车，targets 只应有 1 个元素（task_36 §12.7）
 signal cmd_send(targets: Array[String], cmd: Dictionary)
+## UAV 协助请求（msgid 7）：requester_id = 请求者 sysid（hex）；x/y = 目标世界坐标（米）
+signal assist_request_received(requester_id: String, x: float, y: float)
 signal cells_changed(updates: Array)
 signal goto_issued(x: float, y: float)
 signal mode_transited(mode: int)

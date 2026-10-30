@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Date ： 2026-08-07
-## Modified Date ： 2026-10-29
+## Modified Date ： 2026-10-30
 ##
 ## MessageBuilder — 下行命令构造器（PC → 小车）
 ## 构造 Orion 语义的 Dictionary（含 msgid 字段），由 WebSocketManager
@@ -74,16 +74,21 @@ static func build_auto_push_goto(x: float, y: float) -> Dictionary:
 
 
 ## 一次下发多条任务（LLM 指令聚合用），整体替换语义
-## mission type 归一化：LLM 输出 "goto"/"follow" → 整数；未知字符串仍 → 0（防御性）；int 原样交给 Encode 门控
-## type 契约 = {0 Goto, 2 Follow}；不在其中的由 Encode_Task_Set 降级 + 告警（单一门控点，本函数不再造白名单）
+## mission type 归一化：LLM 输出 "goto"/"follow"/"containment" → 整数；未知字符串仍 → 0（防御性）；
+## int 原样交给 Encode 门控
+## type 契约 = {0 Goto, 2 Follow, 3 Containment}；不在其中的由 Encode_Task_Set **报错并不发帧**
+## （单一门控点，本函数不造白名单）；`half_side` 只有条目自带时才拷（type=3 必须带，由 Encode 校验）
 static func build_task_set(missions: Array) -> Dictionary:
 	var normalized: Array = []
 	for m in missions:
-		normalized.append({
+		var one := {
 			"type": _Normalize_Mission_Type(m.get("type", ProtocolDef.MISSION_TYPE_GOTO)),
 			"x": m.get("x", 0.0),
 			"y": m.get("y", 0.0),
-		})
+		}
+		if m.has("half_side"):
+			one["half_side"] = m.get("half_side")
+		normalized.append(one)
 	return {"msgid": ProtocolDef.MSGID_TASK_SET, "missions": normalized}
 
 

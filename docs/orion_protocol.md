@@ -122,6 +122,7 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 | 3 | `ORION_MAP_DELTA` | 车 → 集群/终端 | 1s 一次（车端 5 帧聚合，Δ≠0 才发） |
 | 4 | `ORION_MANUAL_CONTROL` | 终端/集群 → 车 | 事件驱动 |
 | 5 | `ORION_TASK_SET` | 终端/集群 → 车 | 事件驱动 |
+| 7 | `ORION_ASSIST_REQUEST` | 机 → 终端 | 事件驱动（首次发现 / 目标移动 > 1 m） |
 
 > 字段命名遵循 MAVLink 风格（`snake_case`、C 类型）。类型字节序：大端（与 MAVLink 一致）。
 
@@ -277,45 +278,87 @@ Pictor（Godot 地面站）迁移至 libp2p 之前，**WebSocket 链路保留**�
 
 **task_36 修订（2026-10-27）**：删除群发名单段（旧 `member` 段），协同分配上移到指挥层——地面站**逐车算点、逐车单独发帧**，每帧 `missions[0]` 就是"该车自己的点"；车端不再做任何分配（`planning/assignment.rs` 已删）。
 
+**task_41 修订（2026-10-30）**：`missions[]` 记录**按 `type` 变长**（不再固定 `1 + 9n`）：`0/2` = 9 B，`3` = 13 B；新增 `type = 3`（Containment 封控）。**未知 type 无法确定长度 → 整帧拒**（车端 `decode_task_set → None`，队列不动）；Pictor 侧对未知 type **报错、不发帧**（不再降级成 Goto）。旧接收端按 `1 + 9n` 校验，遇到含 13 B 记录的帧必然整帧拒 → **车/机/终端/Pictor 必须同批升级**。
+
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `mission_count` | uint8 | 任务数（协议上限 255）；**0 = 取消全部任务（停车待命）** |
-| `missions[]` | 结构数组 | 每项 9 字节（见下），共 `mission_count` 条 |
+| `missions[]` | 变长结构数组 | 每项长度由 `type` 决定（见下），总长 `1 + Σ len` |
 
-`missions[i]`（9 字节）：
+`missions[i]` 按 type 变长：
+
+| type | 记录长度 | 布局 | 语义 |
+|---|---|---|---|
+| 0 `Goto` | 9 B | `type u8 \| x f32 BE \| y f32 BE` | `Mission::Goto { x, y }`（目标点） |
+| 2 `Follow` | 9 B | `type u8 \| x f32 BE \| y f32 BE` | `Mission::Follow { x, y }`（`x/y` 预留，填 0） |
+| 3 `Containment` | 13 B | `type u8 \| cx f32 BE \| cy f32 BE \| half f32 BE` | `Mission::Containment { x, y, half_side }`（封控） |
+| 1 | — | — | **退役的旧 `Circle`**（task_36 §十一 #27 删除）：长度表里没有 → **整帧拒**，不得复用 |
+| 其它 | — | — | 保留/未知 → **整帧拒**（不知道长度，不能跳过该条） |
+
+`type = 3` 的字段：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `type` | uint8 | 任务类型：0 = `Goto`；1 起为保留值（旧 `Circle` 已随 task_36 §十一 #27 删除，车端丢弃） |
-| `x` | float | 目标点 X（全局世界坐标，米，x 东） |
-| `y` | float | 目标点 Y（全局世界坐标，米，y 南） |
+| `cx` | f32 | 正方形**中心** X（世界坐标，米，x 东） |
+| `cy` | f32 | 正方形**中心** Y（世界坐标，米，y 南） |
+| `half` | f32 | **半边长**（米）：必须 `is_finite()` 且 `> 0.0`，否则整帧拒 |
 
-**payload 布局**（大端，总长 = `1 + 9 × mission_count`）：
+- 正方形**轴对齐**世界坐标：判定 `|px − cx| ≤ half && |py − cy| ≤ half`（边界含在界内）。
+- 巡逻角点顺序写死（也是初始航向）：`(cx−h, cy−h) → (cx+h, cy−h) → (cx+h, cy+h) → (cx−h, cy+h)`。
+- **只有 sim 机栈真跑**封控树（正方形内巡逻 → 识别到人且人在界内则跟随 → 人出界/丢失回巡逻；未启用 detector → 原地 Hold + warn）；真车 / 真机 / sim 车栈建**平凡树**（一拍 `Success` + warn，队列进下一条）。
+
+**payload 布局**（大端，`$off` 为第 `i` 条记录的起始偏移，`len_j` 见上表）：
 
 | 偏移 | 字段 | 类型 |
 |---|---|---|
 | 0 | `mission_count` | u8 |
-| `1 + 9i` | `missions[i].type` | u8 |
-| `2 + 9i` | `missions[i].x` | f32 |
-| `6 + 9i` | `missions[i].y` | f32 |
+| `$off = 1 + Σ_{j < i} len_j` | `missions[i].type` | u8 |
+| `$off + 1` | `missions[i].x`（或 `cx`） | f32 |
+| `$off + 5` | `missions[i].y`（或 `cy`） | f32 |
+| `$off + 9` | `missions[i].half`（**仅 type=3**） | f32 |
 
-**语义**（task_36 §12.3.4）：
+字节契约（金标，Rust / GDScript / Python 三方同一串）：
+
+| 用例 | payload hex | 总长 |
+|---|---|---|
+| `Goto(64, 64)` | `01004280000042800000` | 10 B |
+| `Follow(0, 0)` | `01020000000000000000` | 10 B |
+| `Containment(64, 64, 8)` | `0103428000004280000041000000` | 14 B |
+| `[Goto(64,64), Containment(64,64,8)]` | `0200428000004280000003428000004280000041000000` | 23 B |
+
+**校验表**（任何一条不符 → **整帧拒**，队列不动）：
 
 | 条件 | 语义 |
 |---|---|
 | `mission_count == 0` | **取消**（空队列替换，停车待命）——唯一取消入口；payload 为 1 字节 `00` |
-| `mission_count > 0` 且 `type == 0` | `Mission::Goto { x, y }` 逐条入队 |
-| `mission_count > 0` 且 `type != 0` | 车端该条 `warn` + 丢弃；**若全部被丢 → 整帧不生效（队列不动）** |
-| 长度 ≠ `1 + 9 × mission_count` | 整帧拒收（`decode_task_set → None`）；**带成员段的旧帧即在此被拒** |
+| 空 payload / 记录越界（截断） | 拒（取消帧也必须是 1 字节 `00`） |
+| 未知 type（含退役的 `1`） | 拒——无法知道该条长度 |
+| 循环结束后 `off != payload.len()`（多 1 B / `count` 与条数不符） | 拒 |
+| `type == 3` 且 `half` 非有限或 `<= 0` | 拒 |
+| 全部字段合法 | 逐条入队（`Mission::Goto` / `Mission::Follow` / `Mission::Containment` 顺序不变） |
 
 行为约束：
 - **替换**：新队列到达即替换旧队列，不合并、不追加
 - **立即中断**：正在执行的任务立即终止（`executor.reset()` + `stm32.stop()`），从新队列第一个任务开始
 - **一帧一车**：协同已上移（task_36 §十一 #27），地面站对每辆车各发一帧，帧内只有该车自己的目标点；`targets` 传多辆车时 `KernelBridge` 会告警
-- **Pictor 侧不生成 `type != 0`**：`Encode_Task_Set` 对非 0 类型强制降级为 `Goto` 并 `printerr`
-- ⚠️ **同批升级**：字节格式变更，车端 + Pictor 同批上线，无过渡期（旧帧因长度校验必然被拒）
+- **Pictor 侧对未知 type 不发帧**：`Encode_Task_Set` 对 `type ∉ {0,2,3}` 或 type=3 的非法 `half_side` → `printerr` + 返回空数组；`Build_Cmd` 把空 payload 变成空帧，`kernel_bridge` 已有 `frame.is_empty()` 短路。`ws_command_server` 的 `task_set` 入口同时把「未知 type / 非法 half_side」变成 `{"ok": false, "error": ...}`，**一帧都不发**
+- ⚠️ **同批升级**：字节格式变更（记录变长），车端 + 机端 + Pictor 同批上线，无过渡期（旧帧因长度校验必然被拒）
 
----
+### 3.6 ORION_ASSIST_REQUEST（msgid 7）— 协助请求（上行，单向）
+
+**task_41 新增**：sim 机栈封控树在「正方形内出现入侵者」时向地面站请求协同包围。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `x` | f32 | 目标世界坐标 X（米，x 东） |
+| `y` | f32 | 目标世界坐标 Y（米，y 南） |
+
+- **payload 严格 8 B**（7 B / 9 B / 空一律拒；非有限值拒）。字节契约金标：`[x=1.0, y=2.0]` = `3f80000040000000`。
+- 传输：gossipsub topic `pleiades/robot/assist_request`；帧 = `encode_frame(7, UAV_peer_id, COMPID_ROBOT(1), payload)`，
+  即 `sysid` = **UAV 的 peer_id**，地面站据此知道请求者（`requester_id`）。
+- **单向**：只有地面站订阅该 topic（Kernel/终端 `[Network].subscribe_topics` 加该 topic）；车 / 机 / sim 不订阅、不回复、无 ACK。
+- 发送时机（UAV 侧）：首次发现界内目标立即发；之后目标相对**上次发送点**移动 > 1 m 再发；目标出界 / 丢失 / 树被 halt → 清状态，再进界立即发。
+- 地面站接收后的行为见 `src/cooperation/coop_controller.gd`：3 m 环 N 点（`θ_i = 2πi/N`）+ 最近一对一 + 逐车一帧 `TASK_SET(type=0)`。
 
 ## 4. sysid / compid 约定
 

@@ -1,5 +1,6 @@
 ## Presented by KeJi
 ## Date ： 2026-09-01
+## Modified Date ： 2026-10-30
 ##
 ## MessageParser — 上行消息解析器（小车 → PC）
 ## 纯静态方法，无状态。
@@ -39,6 +40,7 @@ static func parse_json(text: String) -> Dictionary:
 ##   MSGID_POSE     → { time_boot_ms, x, y, z, vx, vy, yaw, valid, sub_gx, sub_gy, rtk_fixed }
 ##   MSGID_MAP_FULL → { chunk_x, chunk_y, cells, width, height, resolution }
 ##   MSGID_MAP_DELTA→ { voxels: [{gx, gy, delta}] }（delta 为 i8 差分，累加式）
+##   MSGID_ASSIST_REQUEST → { x, y }（task_41 §5.3，UAV 上行协助请求）
 static func parse_orion_frame(pkt: PackedByteArray) -> Dictionary:
 	var frame := OrionFrame.Decode_Frame(pkt)
 	if not frame.ok:
@@ -85,6 +87,12 @@ static func parse_orion_frame(pkt: PackedByteArray) -> Dictionary:
 			if not ts.ok:
 				return _fail(ts.error)
 			data = ts
+
+		ProtocolDef.MSGID_ASSIST_REQUEST:
+			var ar := OrionMessages.Decode_Assist_Request(frame.payload)
+			if not ar.ok:
+				return _fail(ar.error)
+			data = ar
 
 		_:
 			return _fail("unknown msgid: %d" % frame.msgid)

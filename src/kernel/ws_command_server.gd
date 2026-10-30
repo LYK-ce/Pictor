@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Created Date ： 2026-10-29
-## Modified Date ： 2026-10-29
+## Modified Date ： 2026-10-30
 ##
 ## WsCommandServer — Pictor 的 WS 命令通道（task_40 Step 3 / 任务文档 §四）
 ## 让**外部 Python 进程**下发命令、读回遥测，Python 不需要懂 ORION 字节：
@@ -270,8 +270,10 @@ func _Handle_Command(link: Dictionary, obj: Dictionary) -> void:
 			_Send_Ack(link, req_id, false, "unknown cmd: %s" % cmd)
 
 
-## `task_set`：**先全部解析成功再发**（原子）。每辆车一帧，missions 原样交给既有
-## `MessageBuilder.build_task_set`（type≠0 由既有 `Encode_Task_Set` 降级成 0，本步不碰）。
+## `task_set`：**先全部解析成功再发**（原子）。每辆车一帧，missions 交给
+## `MessageBuilder.build_task_set` → `Encode_Task_Set`（按 type 变长，未知 type 直接不发帧）。
+## 本函数是**命令入口门控**：type ∉ {0,2,3} → `ok:false`；type=3 必须带有限且 > 0 的 `half_side`
+## → 否则 `ok:false` 且**一帧都不发**（`Encode` 的 printerr 不出现在 ack 里，外部脚本看不到）。
 func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 	var targets := _String_Array(obj.get("targets", []))
 	if targets.is_empty():
@@ -291,11 +293,23 @@ func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 		if not ((mx is float) or (mx is int)) or not ((my is float) or (my is int)):
 			_Send_Ack(link, req_id, false, "mission 缺少数值 x/y")
 			return
-		missions.append({
-			"type": item.get("type", ProtocolDef.MISSION_TYPE_GOTO),
-			"x": float(mx),
-			"y": float(my),
-		})
+		# type 门控（task_41 §3.2）：{0 Goto, 2 Follow, 3 Containment} 之外**整帧不发**
+		var mt: Variant = item.get("type", ProtocolDef.MISSION_TYPE_GOTO)
+		var mty: int = ProtocolDef.Mission_Type_From(mt) if (mt is String) else int(mt)
+		if mty != ProtocolDef.MISSION_TYPE_GOTO \
+				and mty != ProtocolDef.MISSION_TYPE_FOLLOW \
+				and mty != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+			_Send_Ack(link, req_id, false, "unsupported mission type: %d" % mty)
+			return                                  # 一帧都不发
+		var one := {"type": mty, "x": float(mx), "y": float(my)}
+		if mty == ProtocolDef.MISSION_TYPE_CONTAINMENT:
+			# half_side：必须有限且 > 0（车端 `decode_task_set` 对非法值整帧拒）
+			var mh: Variant = item.get("half_side", null)
+			if not ((mh is float) or (mh is int)) or not is_finite(float(mh)) or float(mh) <= 0.0:
+				_Send_Ack(link, req_id, false, "bad half_side")
+				return                              # 一帧都不发
+			one["half_side"] = float(mh)
+		missions.append(one)
 	var vids: Array[String] = []
 	for token: String in targets:
 		var vid := _Resolve_Target(token)
