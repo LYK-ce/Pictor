@@ -1,5 +1,6 @@
 ## Presented by KeJi
 ## Date ： 2026-08-07
+## Modified Date ： 2026-10-29
 ##
 ## MessageBuilder — 下行命令构造器（PC → 小车）
 ## 构造 Orion 语义的 Dictionary（含 msgid 字段），由 WebSocketManager
@@ -73,7 +74,8 @@ static func build_auto_push_goto(x: float, y: float) -> Dictionary:
 
 
 ## 一次下发多条任务（LLM 指令聚合用），整体替换语义
-## mission type 归一化：LLM 输出字符串 "goto" → 整数 MISSION_TYPE_GOTO（防御性）
+## mission type 归一化：LLM 输出 "goto"/"follow" → 整数；未知字符串仍 → 0（防御性）；int 原样交给 Encode 门控
+## type 契约 = {0 Goto, 2 Follow}；不在其中的由 Encode_Task_Set 降级 + 告警（单一门控点，本函数不再造白名单）
 static func build_task_set(missions: Array) -> Dictionary:
 	var normalized: Array = []
 	for m in missions:

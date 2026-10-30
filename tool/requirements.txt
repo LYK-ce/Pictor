@@ -1,3 +1,4 @@
 faster-whisper
 fastapi
 uvicorn
+websockets>=12.0

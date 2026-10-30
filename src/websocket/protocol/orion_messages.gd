@@ -1,5 +1,6 @@
 ## Presented by KeJi
 ## Date ： 2026-09-01
+## Modified Date ： 2026-10-29
 ##
 ## OrionMessages — Orion 协议 5 种消息 payload 编解码
 ## 规范文档：docs/orion_protocol.md
@@ -162,7 +163,7 @@ static func Decode_Manual_Control(payload: PackedByteArray) -> Dictionary:
 ## task_36 §十一 #27 / #28：协同上移到指挥层 —— 地面站逐车算点、逐车单独发帧，
 ## 每帧 missions[0] 就是"该车自己的点"，载荷里不再有名单段（旧的 peer 名单已删）。
 
-## missions: Array[{type, x, y}]；type 只允许 MISSION_TYPE_GOTO（其余降级并告警，见下）
+## missions: Array[{type, x, y}]；type 只允许 {MISSION_TYPE_GOTO, MISSION_TYPE_FOLLOW}（其余降级并告警，见下）
 static func Encode_Task_Set(missions: Array) -> PackedByteArray:
 	var m_count := missions.size()
 	if m_count > 255:
@@ -174,14 +175,15 @@ static func Encode_Task_Set(missions: Array) -> PackedByteArray:
 	var off := 1
 	for i in range(m_count):
 		var mi = missions[i]
-		# mission type 归一化：LLM 可能输出字符串 "goto"（防御性）
+		# mission type 归一化：LLM 可能输出字符串 "goto"/"follow"（防御性）
 		var mt = mi.get("type", ProtocolDef.MISSION_TYPE_GOTO)
 		if mt is String:
 			mt = ProtocolDef.Mission_Type_From(mt)
-		# 车端只认 type=0（Goto）：其余类型会被 command_decode 丢弃（task_36 §12.3.4）。
+		# 车端认 type ∈ {0 Goto, 2 Follow}：其余类型会被 command_decode 丢弃（task_36 §12.3.4）。
 		# 静默丢任务比"降级到锚点"更危险，故此处强制降级并告警（Circle 已随 §十一 #27 废弃）。
-		if int(mt) != ProtocolDef.MISSION_TYPE_GOTO:
-			printerr("[OrionMessages] mission type ", int(mt), " unsupported (only Goto), coerced to 0")
+		if int(mt) != ProtocolDef.MISSION_TYPE_GOTO and int(mt) != ProtocolDef.MISSION_TYPE_FOLLOW:
+			printerr("[OrionMessages] mission type ", int(mt),
+					" unsupported (only {0,2}): Goto/Follow, coerced to 0")
 			mt = ProtocolDef.MISSION_TYPE_GOTO
 		buf[off] = int(mt)
 		OrionFrame.Write_F32_BE(buf, off + 1, mi.get("x", 0.0))

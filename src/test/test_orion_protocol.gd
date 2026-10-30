@@ -2,11 +2,13 @@ extends SceneTree
 
 ## Presented by KeJi
 ## Date ： 2026-08-11
+## Modified Date ： 2026-10-29
 ##
 ## Orion 协议 v2 编解码 roundtrip 测试（headless）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
 ## 覆盖：帧/消息 roundtrip（v2 变长 sysid）+ 大端字节序断言（与 Rust 端字节比对）
 ## Task 21：地图改 log-odds 语义（delta i8 位模式 / clamp / 阈值派生边界）
+## task_40 Step 4：Follow(type=2) 放开（`_test_follow_task_set`），∉{0,2} 仍降级
 
 func _init() -> void:
 	var ok := true
@@ -22,6 +24,7 @@ func _init() -> void:
 	ok = ok and _test_endianness()
 	ok = ok and _test_llm_missions()
 	ok = ok and _test_circle_task_set()
+	ok = ok and _test_follow_task_set()
 	ok = ok and _test_target_alloc()
 	ok = ok and _test_log_odds_signed()
 	ok = ok and _test_clamp()
@@ -356,6 +359,82 @@ func _test_circle_task_set() -> bool:
 	if absf(ts.missions[0].x - 3.0) > 0.0001 or absf(ts.missions[0].y - 4.0) > 0.0001:
 		print("FAIL circle-as-goto fields: ", ts.missions[0]); return false
 	print("PASS circle_task_set"); return true
+
+
+# ─── task_40 Step 4：Follow(type=2) 放开 + 未知类型仍被降级 ────────────────
+
+func _test_follow_task_set() -> bool:
+	# ① 常量 + 归一化（"follow" 认得出；"goto"/"circle"/未知 仍是 0）
+	if ProtocolDef.MISSION_TYPE_FOLLOW != 2:
+		print("FAIL MISSION_TYPE_FOLLOW != 2"); return false
+	if ProtocolDef.Mission_Type_From("follow") != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL mission_type_from follow"); return false
+	if ProtocolDef.Mission_Type_From("FOLLOW") != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL mission_type_from FOLLOW case"); return false
+	if ProtocolDef.Mission_Type_From(" follow ") != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL mission_type_from follow trimmed"); return false
+	if ProtocolDef.Mission_Type_From(2) != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL mission_type_from int 2 passthrough"); return false
+	if ProtocolDef.Mission_Type_From("goto") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from goto"); return false
+	if ProtocolDef.Mission_Type_From("circle") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from circle should be Goto"); return false
+	if ProtocolDef.Mission_Type_From("unknown") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from unknown"); return false
+
+	# ② Encode：单条 type=2、x=y=0 → 10B，金标 01020000000000000000（与 Python 侧同一枚）
+	var p := OrionMessages.Encode_Task_Set([{"type": 2, "x": 0.0, "y": 0.0}])
+	if p.size() != 10 or p[0] != 1:
+		print("FAIL follow payload size/count: ", p); return false
+	if p[1] != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL follow type byte: ", p[1]); return false
+	if p.hex_encode() != "01020000000000000000":
+		print("FAIL follow golden bytes: ", p.hex_encode()); return false
+
+	# ③ x 仍是大端 f32：x=12.5 → [41 48 00 00] @2..6，且 byte[1] 仍是 2
+	var p2 := OrionMessages.Encode_Task_Set([{"type": 2, "x": 12.5, "y": 0.0}])
+	if p2[1] != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL follow x-case type byte"); return false
+	if p2.slice(2, 6) != PackedByteArray([0x41, 0x48, 0x00, 0x00]):
+		print("FAIL follow f32 BE: ", p2.slice(2, 6)); return false
+
+	# ④ 整帧 roundtrip：Build_Cmd → Decode_Frame → Decode_Task_Set
+	var frame_f := OrionMessages.Build_Cmd(
+		MessageBuilder.build_task_set([{"type": "follow", "x": 3.0, "y": 4.0}]))
+	var dec_f := OrionFrame.Decode_Frame(frame_f)
+	if not dec_f.ok:
+		print("FAIL follow frame decode: ", dec_f.error); return false
+	var ts := OrionMessages.Decode_Task_Set(dec_f.payload)
+	if not ts.ok or ts.mission_count != 1:
+		print("FAIL follow roundtrip: ", ts); return false
+	if ts.missions[0].type != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL follow roundtrip type: ", ts.missions[0]); return false
+	if absf(ts.missions[0].x - 3.0) > 0.0001 or absf(ts.missions[0].y - 4.0) > 0.0001:
+		print("FAIL follow roundtrip fields: ", ts.missions[0]); return false
+	# 字符串链路：build_task_set 已归一化成整数 2
+	if MessageBuilder.build_task_set([{"type": "follow"}]).missions[0].type != ProtocolDef.MISSION_TYPE_FOLLOW:
+		print("FAIL build_task_set follow normalize"); return false
+
+	# ⑤ 混合 [2, 0]：逐条保住自己的 type，布局仍是 1 + 9n
+	var pm := OrionMessages.Encode_Task_Set([{"type": 2, "x": 0.0, "y": 0.0},
+			{"type": 0, "x": 1.0, "y": 1.0}])
+	if pm.size() != 19 or pm[0] != 2:
+		print("FAIL mixed payload layout: ", pm); return false
+	if pm[1] != ProtocolDef.MISSION_TYPE_FOLLOW or pm[10] != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mixed payload types: ", pm[1], pm[10]); return false
+
+	# ⑥ 门控没放松：type=3 / type=1 仍被降级成 0 并告警（这里的 printerr 是预期输出）
+	var p3 := OrionMessages.Encode_Task_Set([{"type": 3, "x": 0.0, "y": 0.0}])
+	if p3.size() != 10 or p3[1] != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL type=3 must be coerced to Goto: ", p3); return false
+	var p1 := OrionMessages.Encode_Task_Set([{"type": 1, "x": 0.0, "y": 0.0}])
+	if p1[1] != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL type=1 must be coerced to Goto: ", p1); return false
+	# 数字直通到 Encode 之前：门控在 Encode，不在 Mission_Type_From
+	if ProtocolDef.Mission_Type_From(3) != 3:
+		print("FAIL mission_type_from int 3 passthrough"); return false
+
+	print("PASS follow_task_set"); return true
 
 
 # ─── Task 21：log-odds 语义边界用例 ────────────────────────────

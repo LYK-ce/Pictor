@@ -67,6 +67,7 @@
 | `src/util/` | `util.gd` | 工具箱容器（聚合 LLM 等工具） | `Util` |
 | | `llm.gd` | 自然语言 → 指令序列（DeepSeek HTTP） | `LLM`；`cmds_generated`/`request_failed` |
 | `src/utils/` | `coords.gd` | 坐标转换纯静态工具 | `CoordUtils.SCALE=32/TILE_SIZE=16` |
+| `src/kernel/` | `ws_command_server.gd` | WS 命令通道（task_40 Step 3，默认关闭） | `Listen`/`Stop`/`GetListenPort`/`GetStats`；`--ws-port=P` |
 | `src/test/` | `test_ws_server.gd` | 模拟小车（TCPServer+WS，Orion 参考实现） | 运动/地图/任务模拟 |
 | | `test_orion_protocol.gd` | Orion 协议 headless 单测（16 个测试函数） | — |
 | | `test_e2e_orion.gd` | 单车全链路 headless e2e | — |
@@ -113,7 +114,7 @@
 **`protocol_def.gd`** — `class_name ProtocolDef extends RefCounted`，全部为 `const`：
 - `MSG_HELLO="hello"`；`MSGID_POSE=1 / MAP_FULL=2 / MAP_DELTA=3 / MANUAL_CONTROL=4 / TASK_SET=5`
 - `ACTION_FORWARD=0 … ACTION_SWITCH_TO_AUTO=9`；`MANUAL_DEFAULT_SPEED=50`
-- `MISSION_TYPE_GOTO=0`
+- `MISSION_TYPE_GOTO=0 / MISSION_TYPE_FOLLOW=2`（`Mission_Type_From` 认 "follow"；∉{0,2} 由 `Encode_Task_Set` 降级 + 告警）
 - `CELL_FREE=0 / CELL_OCCUPIED=100 / CELL_UNKNOWN=255`（显示层派生三态，线上不传输）
 - `LOG_ODDS_CLAMP=8 / LOG_ODDS_THRESHOLD=6`（车端 grid.rs 对齐）
 - `SYSID_LEN_MAX=255 / COMPID_VEHICLE=1 / COMPID_TERMINAL=200`
@@ -501,6 +502,9 @@ app_state.mode setter → EventBus.mode_transited.emit(mode)
 
 - `gen_chunk_0_0.gd`：生成 `Assets/2D/map_chunk_0_0.tres`（确定性 log-odds 图，与 test_ws_server 变体 0 一致）。
 - `tile_cut.py`：PNG 按网格切图（PIL），用于 tileset 素材切分。
+- `pictor_ws_ctl.py`：WS 命令通道的 Python 控制脚本（`vehicles`/`wait`/`task`/`monitor`，退出码 0/1/2），见 §九。
+- `check_ws_command_server.gd`：`ws_command_server.gd` 的进程内自检（`godot --headless --path Pictor --fixed-fps 60 -s res://tool/check_ws_command_server.gd`，14 条断言 A1~A14）。
+- `requirements.txt`：Python 依赖（`faster-whisper`/`fastapi`/`uvicorn`，task_40 Step 3 起加 `websockets>=12.0`）。
 
 ---
 
@@ -517,6 +521,91 @@ app_state.mode setter → EventBus.mode_transited.emit(mode)
 | 禁止 get_node("/root/...") | 符合 | 0 处 |
 | 组件间 EventBus 通信 | 基本符合 | 例外：auto_handler 直调 `util.llm.generate_cmds`（经 Util 容器，属工具调用）；manager↔client、manager↔panel 为父子节点方法调用 |
 | 禁止 .gd 硬编码 load("res://") | 边界违反 | 仅 test_e2e_orion.gd、tool/gen_chunk_0_0.gd（测试/工具） |
+
+---
+
+## 九、WS 命令通道（task_40 Step 3）
+
+> 位置：`src/kernel/ws_command_server.gd`（挂在 `src/main/main.tscn` 的 `Main/WsCommandServer`）。
+> 定位：让**外部 Python 进程**通过 Pictor 下发命令、读回遥测；Python **不需要懂 ORION 字节**。
+> 只承载层 1（ORION / libp2p）：`TASK_SET`(type=0 Goto / type=2 Follow) / 模式；上行 `pose` / `peer_*` / `map_*`。
+> **不新增协议**：msgid 仍只有 `TASK_SET=5` / `MANUAL_CONTROL=4`（`ProtocolDef`）；`Follow` 已放开（type=2，仅 WS 入口，不加 UI/LLM）。
+
+### 9.1 开关与绑定
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| 开关 | 命令行 `godot --headless --path Pictor -- --ws-port=9100` | **默认关闭**（不给参数就完全不起监听）；`WsCommandServer.autolisten = false` 时也不起 |
+| 绑定 | 只绑 `127.0.0.1` | 无鉴权、无 TLS：靠"只有本机能连"兜底；`GetBindAddress()` 断言这一点 |
+| 端口 | `--ws-port=<1..65535>`；0 = OS 临时端口（自检用） | 非法值只 `push_warning` 并关闭通道，不写进配置段 |
+| 公共 API | `Listen(port)` / `Stop()` / `GetListenPort()` / `GetBindAddress()` / `IsListening()` / `GetLinkCount()` / `GetStats()` | `Stop()` 幂等，`_exit_tree` 会调 |
+| 主循环 | 全部在 `_process(delta)` 里 poll | 不阻塞渲染/内核；无监听且无连接时立即 return（零开销） |
+
+### 9.2 数据流
+
+```text
+Python ──JSON 文本帧──► WsCommandServer ──EventBus.cmd_send([vid], cmd)──► KernelBridge ──► ORION 帧 ──► 车端
+Python ◄──JSON 文本帧─── WsCommandServer ◄──EventBus.pose_received / peer_* / map_*── KernelBridge ◄── 车端
+```
+
+- 下行 `cmd_dict` 就是 `Build_Cmd` 吃的 `{msgid, ...}`（`TASK_SET` 用 `MessageBuilder.build_task_set`，一帧一车）。
+- 车名 → vehicle_id 只走既有 `VehicleRegistry`（`get_id_by_name`）；本节点**不维护车辆表**，也不新增全局状态。
+- `targets` 除车名外也接受 `vehicles` 返回里的 hex `vid`（兜底：车名还没到时也能下发）。
+
+### 9.3 下行命令（Python → Pictor）
+
+| `cmd` | 必填 | 行为 | ack |
+|---|---|---|---|
+| `vehicles` | — | 读注册表 → `{"event":"vehicles","list":[{name,vid,node_type},…]}`（ack 之后同帧发） | `ok:true` |
+| `task_set` | `targets[]`、`missions[]`（`{type,x,y}`） | **先全部解析成功再发**（原子）：每车一帧 `cmd_send` → `KernelBridge` 编码下发 | 任一 target 未知 → `ok:false, error:"unknown vehicle: X"`，**一帧都不发** |
+| `mode` | `targets[]`、`to ∈ {auto,manual}` | 每车一帧 `MANUAL_CONTROL`（action 9/8） | 同上 |
+| `subscribe` | `events[]`、`pose_hz`、`targets[]` | 原子替换本连接订阅；未知名 → `ok:false` 且**不生效** | `ok:true` + `applied{…}` 回显 |
+| 其它 | — | 不改订阅、不下发 | `ok:false, error:"unknown cmd: X"` |
+
+统一 ack 形状：`{"ack": <id>, "ok": <bool>, "error": "<msg>"}`（`id` 缺失按 0）。
+非法 JSON / 非对象 → `{"ack":0,"ok":false,"error":"bad json"}`，**不断连**。
+
+> ⚠️ **`ack` 只代表「已交给 kernel」，不代表车端收到**（`pleiades-terminal` 侧不发回执、车端 ACK 恒回 `b"OK"` 且发送方不读）。
+> 判定"命令生效"只能用上行事件（`pose` 的 `valid`/`gx`/`gy` 变化）或 sim 日志。
+
+### 9.4 上行事件（Pictor → Python）
+
+| `event` | 触发 | 字段 |
+|---|---|---|
+| `pose` | `EventBus.pose_received`；受订阅 + `pose_hz` + `targets` 三重约束 | `{vid, name, x, y, yaw, valid:0/1, gx, gy, rtk_fixed:0/1, t_ms}`（`gx/gy` = `sub_gx/sub_gy`，`valid=1` 表示车端有 sub_target） |
+| `peer_connected` | `vehicle_registered` | `{vid, name, node_type}`（名字要等 `peer_info` 才到，初始可能为 `""`） |
+| `peer_info` | `peer_info_updated` | `{vid, name, node_type}` |
+| `peer_disconnected` | `vehicle_unregistered` | `{vid}` |
+| `map_delta` | `map_delta_received`；仅显式订阅、≤1 Hz | `{count}`（**不发 voxels 本体**） |
+| `map_full` | `map_full_received`；仅显式订阅 | `{vid, chunk_x, chunk_y, width, height, bytes}`（只发元数据） |
+
+默认订阅 = `["pose","peer"]`、`pose_hz = 2`、`targets = []`（= 全部）——不降频会被 10 Hz × N 车刷屏。
+`pose_hz <= 0` 解释为"不限频"（钳到 50 Hz）；`targets` 非空时按 hex vid 或车名比对，名字未知的 vid 不推。
+频率判定用 `_process(delta)` 累加的引擎时间，不用墙钟（`--fixed-fps 60` 下可复现）。
+
+### 9.5 脚本用法与退出码（`tool/pictor_ws_ctl.py`）
+
+```bash
+python3 Pictor/tool/pictor_ws_ctl.py vehicles  [--port 9100] [--json]
+python3 Pictor/tool/pictor_ws_ctl.py wait      --target ugv_1 [--timeout 40]
+python3 Pictor/tool/pictor_ws_ctl.py task      --target ugv_1 --x 70 --y 64 [--tol 0.3] [--frames 3]
+python3 Pictor/tool/pictor_ws_ctl.py follow    --target uav_1 [--x 0 --y 0] [--type 2] [--watch 45]
+python3 Pictor/tool/pictor_ws_ctl.py monitor   [--seconds 10] [--pose-hz 2] [--events pose,peer]
+```
+
+退出码：`0` = 断言通过；`1` = 断言失败（含"未注册车 → ack ok:false"这种**预期失败但要求明确失败**的场景）；
+`2` = 环境错误（连不上 / 无 `websockets` / 参数非法）。
+`task` 一次运行完成「等注册 → 发 `task_set` → 收 `pose` → 判到达 → 退出码」，到达判定是双信号：
+(a) 先见到 `valid==1` 再连续 N 帧 `valid==0`（`arrival_signal="valid_zero"`）；
+(b) 连续 N 帧 `hypot(x-tx, y-ty) <= tol`（`"converge"`）；另加闸门 `final_err_m <= 2.0 m` 防"假到达"。
+`follow` 发 `type=2`（`x/y` 预留填 0），并对将要发出的帧做本地布局断言（`1 + 9n`、type 字节、
+`type=2` 且 `x=y=0` 时比对金标 `01020000000000000000`）；`--watch N` 采样 pose（默认 10 Hz）供判据取证；
+`--type 3` 是「未知类型仍被降级」的探针（Pictor 会降级成 0 并 `printerr` 告警）。
+
+### 9.6 不做（本步红线）
+
+不新增 ORION 消息、不改 `Follow{x,y}` 语义（`x/y` 预留填 0、不加 UI 按钮/LLM 词表；type ∉ {0,2} 仍被
+`Encode_Task_Set` 降级成 0）、不管 Manual 模式、不做鉴权/TLS/UI 按钮、不动 executor / nav / 世界 / 协议编解码。
 
 ---
 

@@ -1,5 +1,6 @@
 ## Presented by KeJi
 ## Date ： 2026-08-07
+## Modified Date ： 2026-10-29
 ##
 ## ProtocolDef — Orion 统一协议常量定义
 ## 规范文档：docs/orion_protocol.md
@@ -43,15 +44,22 @@ const MANUAL_DEFAULT_SPEED := 50   # Task 25：车端已忽略速度档位（for
 
 # ─── ORION_TASK_SET mission type ─────────────────────────────
 
-## 车端只有 Goto 一棵树（task_36 §十一 #27 删 Mission::Circle），type 非 0 的条目会被
-## command_decode 丢弃；因此 Pictor 侧只生成 0。旧值 1（Circle）已随该结论废弃，常量删除。
+## 车端 `command_decode` 认的 type：0 = Goto、2 = Follow（task_37 §五.2）。
+## 车栈的 Follow 是**平凡树**（一拍 Success + warn，task_37 D-S6），机栈才是真跟随。
+## 不在 {0,2} 的条目会被 `Encode_Task_Set` 降级成 0 并告警；旧值 1（Circle）已随
+## task_36 §十一 #27 废弃，常量删除、不得复用。
 const MISSION_TYPE_GOTO := 0
+const MISSION_TYPE_FOLLOW := 2
 
-## 字符串/数字 → mission type 整数（"goto"/"circle"/未知字符串 → 0；数字原样返回）
+## 字符串/数字 → mission type 整数（"goto"/未知字符串 → 0；"follow" → 2；数字原样返回）
 ## "circle" 的环形几何已上移到地面站（TargetAlloc.compute_targets 的 shape 参数），不进协议
 static func Mission_Type_From(t) -> int:
 	if t is String:
-		return MISSION_TYPE_GOTO
+		match str(t).strip_edges().to_lower():
+			"follow":
+				return MISSION_TYPE_FOLLOW
+			_:
+				return MISSION_TYPE_GOTO
 	return int(t)
 
 

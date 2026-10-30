@@ -14,6 +14,7 @@
 [ext_resource type="PackedScene" uid="uid://cg2a1yxqyl82x" path="res://src/ui/command_channel/command_channel.tscn" id="11_hc2u7"]
 [ext_resource type="PackedScene" uid="uid://ci3b8tr6nfigl" path="res://src/ui/scaler/scale.tscn" id="11_scale"]
 [ext_resource type="PackedScene" uid="uid://c1rfhigc30j7o" path="res://src/vehicle_registry/vehicle_registry.tscn" id="12_vreg"]
+[ext_resource type="Script" uid="uid://cdknd2j0y1qye" path="res://src/kernel/ws_command_server.gd" id="13_wscmd"]
 
 [node name="Main" type="Node" unique_id=602051622]
 script = ExtResource("1_main")
@@ -27,6 +28,9 @@ texture_filter = 1
 
 [node name="KernelBridge" type="Node" parent="." unique_id=668717889]
 script = ExtResource("4_kb")
+
+[node name="WsCommandServer" type="Node" parent="."]
+script = ExtResource("13_wscmd")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=2072557646]
 
