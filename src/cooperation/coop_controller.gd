@@ -1,12 +1,13 @@
 ## Presented by KeJi
 ## Created Date ： 2026-10-30
-## Modified Date ： 2026-10-30
+## Modified Date ： 2026-10-31
 ##
 ## CoopController — 地面站协同控制（task_41 §二.10 / §5.5.11）
 ##
 ## 链路：UAV 树 InsideSquare → gossipsub `pleiades/robot/assist_request`（msgid 7）
 ##       → kernel robot_frame → MessageParser → kernel_bridge → EventBus.assist_request_received
-##       → 本模块：取在线 UGV → N 个等角点（3 m 环）→ **最近一对一**分配 → 逐车一帧 Goto。
+##       → 本模块：取在线 UGV **去掉请求者**（排除请求者：请求车不进 targets）→ N = 剩余车数
+##         （4 车 → 3 点，θ = 2π·i/3）→ N 个等角点（3 m 环）→ **最近一对一**分配 → 逐车一帧 Goto。
 ##
 ## 口径（不可自行改）：环半径 3 m；角度 θ_i = 2π·i/N（offset = 0）；N ≤ 6 全排列暴力取总距离
 ##   最小，N > 6 贪心；**每次给每辆车都发**（TASK_SET 整体替换，接受 reset 顿挫，不额外限流）。
@@ -17,7 +18,8 @@ extends Node
 
 ## 环半径（米）：人四周 3 m（task_41 §二.10）
 const RING_RADIUS_M := 3.0
-## 点位起始相位（弧度）：0 → N=4 时点落在 0°/90°/180°/270°（正好覆盖四象限，Step 4 Q4）
+## 点位起始相位（弧度）：0 → N=4 时点落在 0°/90°/180°/270°（正好覆盖四象限，Step 4 Q4）；
+## N = 3 时点落在 0°/120°/240°（task_43 §七）
 const RING_OFFSET_RAD := 0.0
 ## 暴力枚举上限：N ≤ 6（最多 720 个排列）；更大走贪心
 const BRUTE_FORCE_MAX_N := 6
@@ -181,13 +183,19 @@ func _on_assist_request(requester_id: String, x: float, y: float) -> void:
 		printerr("[Coop] EventBus 未就绪，丢弃派发（requester=%s 目标=(%.2f,%.2f)）" % [requester_id, x, y])
 		return
 	var cars := _online_cars()
+	# **排除请求者**（task_43 §七 / 口径 #9）：发请求的那台车自己不能进 targets，
+	# 否则它会收到一条 Goto TASK_SET（整体替换语义）把自己的 containment 任务顶掉
+	# （Step 6 硬判据 3 要求请求车任务不断）。requester_id 与 registry 键同为 sysid 的 hex 串
+	# （task_41 实测：`[Coop] 协助请求 requester=00240801…` 与 `[Coop] 指派 车=00240801…` 同形）。
+	cars.erase(str(requester_id))
 	if cars.is_empty():
-		print("[Coop] 协助请求 requester=%s 目标=(%.2f,%.2f) 无在线车 → 忽略" % [requester_id, x, y])
+		print("[Coop] 协助请求 requester=%s 目标=(%.2f,%.2f) 无其他在线车（已排除请求者）→ 忽略" % [requester_id, x, y])
 		return
 	var ids: Array[String] = []
 	for id in cars:
 		ids.append(str(id))
 	ids.sort()
+	# N = 排除请求者后的待命车数（4 车 → N=3 ⇒ θ = 2π·i/3，R = 3.0 m）
 	var points := ring_points(center, ids.size(), RING_RADIUS_M, RING_OFFSET_RAD)
 	var assign := assign_one_to_one(ids, cars, points)
 	var parts: Array = []

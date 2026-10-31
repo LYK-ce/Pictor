@@ -2,11 +2,12 @@ extends SceneTree
 
 ## Presented by KeJi
 ## Created Date ： 2026-10-30
-## Modified Date ： 2026-10-30
+## Modified Date ： 2026-10-31
 ##
-## CoopController 纯函数单测（headless，task_41 §5.5.11）
+## CoopController 纯函数单测（headless，task_41 §5.5.11 / task_43 §七）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
-## 覆盖：3 m 环 N 点等角 / N=1;2;8 边界 / N=4 四轴覆盖 /
+## 覆盖：3 m 环 N 点等角 / N=1;2;8 边界 / N=4 四轴覆盖 / 3 点环（N=3，θ=2π·i/3）/
+##       排除请求者（请求者不进 targets）/
 ##       两车与四车最近一对一（无重复）/ N! 最优性（2 车 + 3 车）/ N>6 贪心 / 参数不匹配
 ##
 ## 用 preload 而不是全局类名：新 `class_name` 未进 `.godot/global_script_class_cache.cfg` 时
@@ -16,11 +17,26 @@ const Coop := preload("res://src/cooperation/coop_controller.gd")
 
 const EPS := 1e-4
 
+## 真机形态的 sysid（= 注册表键 = assist 帧的 sysid hex；格式取自 task_41 实跑日志）
+const HEX_PREFIX := "002408011220"
+
+
+## 假注册表（只提供 `vehicles` 字典；`-s` 模式没有真 VehicleRegistry 节点）
+class FakeRegistry extends RefCounted:
+	var vehicles: Dictionary = {}
+
+
+## 假 EventBus（只提供 `cmd_send` 信号；`-s` 模式没有 autoload）
+class FakeBus extends RefCounted:
+	signal cmd_send(targets: Array, cmd: Dictionary)
+
 
 func _init() -> void:
 	var ok := true
 	ok = ok and _test_ring_points_4()
 	ok = ok and _test_ring_points_edges()
+	ok = ok and _test_ring_points_3()
+	ok = ok and _test_assist_excludes_requester()
 	ok = ok and _test_ring_points_cover_axes()
 	ok = ok and _test_assign_two_cars()
 	ok = ok and _test_assign_four_no_duplicate()
@@ -80,6 +96,7 @@ func _test_ring_points_edges() -> bool:
 
 ## ③ N=4 时 offset=0 → 四点分别落在 +x / +y / −x / −y 四条轴上（各一次）
 ## （Step 4 Q4 的前置证据：四个方向都被占住，人两侧都有人）
+## task_43 §七：生产路径现在是 N=3（4 车 − 请求者），N=4 只剩纯函数覆盖
 func _test_ring_points_cover_axes() -> bool:
 	var center := Vector2(64.0, 64.0)
 	var pts := Coop.ring_points(center, 4)
@@ -207,3 +224,85 @@ func _test_assign_size_mismatch() -> bool:
 	if not Coop.assign_one_to_one(empty_ids, {}, empty_pts).is_empty():
 		print("FAIL assign 0/0 not empty"); return false
 	print("PASS assign_size_mismatch"); return true
+
+
+## ⑨ 3 点环（task_43 §七）：`ring_points(center, 3)` → size 3、每点在 R = 3.0 m 环上、
+##    下标 0 = (67,64)（offset = 0 → θ = 0°）、三点两两夹角 120°（θ = 2π·i/3）、相邻弦长 3√3
+func _test_ring_points_3() -> bool:
+	var center := Vector2(64.0, 64.0)
+	var pts := Coop.ring_points(center, 3)
+	if pts.size() != 3:
+		print("FAIL ring_points(3) size: ", pts.size()); return false
+	for i in range(3):
+		if absf(pts[i].distance_to(center) - 3.0) > EPS:
+			print("FAIL ring_points(3) radius i=%d: %f" % [i, pts[i].distance_to(center)]); return false
+	if not _approx(pts[0], Vector2(67.0, 64.0)):
+		print("FAIL ring_points(3) point0: ", pts[0]); return false
+	var expect_chord := 3.0 * sqrt(3.0)                    # 3√3 ≈ 5.196 m
+	for i in range(3):
+		var a := pts[i] - center
+		var b := pts[(i + 1) % 3] - center
+		var cos_theta := a.dot(b) / (3.0 * 3.0)
+		var theta := acos(clampf(cos_theta, -1.0, 1.0))
+		if absf(theta - TAU / 3.0) > 1e-3:
+			print("FAIL ring_points(3) angle i=%d: %f rad" % [i, theta]); return false
+		if absf(pts[i].distance_to(pts[(i + 1) % 3]) - expect_chord) > EPS:
+			print("FAIL ring_points(3) chord i=%d" % i); return false
+	print("PASS ring_points_3"); return true
+
+
+## ⑩ 排除请求者（task_43 §七 / 口径 #9）：4 车里有 1 台是请求者 → 只给另外 3 台各发一条 Goto，
+##    请求者不出现在任何 targets 里，且环上正好 3 个点（θ = 2π·i/3，R = 3.0）。
+func _test_assist_excludes_requester() -> bool:
+	var requester := HEX_PREFIX + "8a9796f5850976924958893f249d21081aeed5d224a044a835a5e1c833bcb859"
+	var others := [
+		HEX_PREFIX + "6f528fe271a08e87f3479b97b7b3b2b246ece0789fa61f15f0f679a3164967c1",
+		HEX_PREFIX + "a8ec6a9bbc3a517300fb071809279b2a325c6d69822903f29dcb042610ec7ab5",
+		HEX_PREFIX + "ba26c91230c14a1bd37cd61a25f7276e8eb9265be3fc18f0409b6a1738877ebb",
+	]
+	var reg := FakeRegistry.new()
+	reg.vehicles[requester] = {"name": "c1", "x": 64.0, "y": 60.0, "yaw": 0.0, "node_type": "car"}
+	reg.vehicles[others[0]] = {"name": "c2", "x": 60.0, "y": 64.0, "yaw": 0.0, "node_type": "car"}
+	reg.vehicles[others[1]] = {"name": "c3", "x": 68.0, "y": 64.0, "yaw": 0.0, "node_type": "car"}
+	reg.vehicles[others[2]] = {"name": "c4", "x": 64.0, "y": 68.0, "yaw": 0.0, "node_type": "car"}
+	var bus := FakeBus.new()
+	var sent: Array = []
+	bus.cmd_send.connect(func(t, c): sent.append([t, c]))
+	var coop = Coop.new()          # 不 add_child：避免 _ready 里解析 EventBus（-s 模式无 autoload）
+	coop._registry = reg
+	coop._bus = bus
+	coop._on_assist_request(requester, 64.0, 64.0)
+	# ① 只发 3 条（4 车 − 请求者）
+	if sent.size() != 3:
+		print("FAIL excludes_requester: sent=%d（应 3）" % sent.size()); coop.free(); return false
+	# ② 请求者不在任何 targets 里（本步的核心断言）
+	for e in sent:
+		var targets: Array = e[0]
+		if targets.has(requester):
+			print("FAIL excludes_requester: 请求者仍被指派 targets=", targets); coop.free(); return false
+	# ③ 恰好覆盖另外 3 台车、一车一条
+	var got: Array = []
+	for e in sent:
+		got.append_array(e[0])
+	got.sort()
+	var want: Array = others.duplicate(); want.sort()
+	if got != want:
+		print("FAIL excludes_requester: ids=%s want %s" % [got, want]); coop.free(); return false
+	# ④ 三条 Goto 的目标坐标两两不同、都在 3 m 环上、且正好等于 ring_points(center,3)
+	var ring := Coop.ring_points(Vector2(64.0, 64.0), 3)
+	var seen: Array = []
+	for e in sent:
+		var m: Dictionary = e[1].missions[0]
+		var p := Vector2(float(m.x), float(m.y))
+		if absf(p.distance_to(Vector2(64.0, 64.0)) - 3.0) > EPS:
+			print("FAIL excludes_requester: 不在 3 m 环上 ", p); coop.free(); return false
+		var hit := false
+		for r in ring:
+			if _approx(p, r): hit = true
+		if not hit:
+			print("FAIL excludes_requester: 目标不在 ring_points(center,3) 上 ", p); coop.free(); return false
+		seen.append(p)
+	if seen.size() != 3 or seen[0] == seen[1] or seen[1] == seen[2] or seen[0] == seen[2]:
+		print("FAIL excludes_requester: 目标点重复 ", seen); coop.free(); return false
+	coop.free()
+	print("PASS assist_excludes_requester"); return true
