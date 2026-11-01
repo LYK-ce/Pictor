@@ -1,65 +1,41 @@
 ## Presented by KeJi
-## Date ： 2026-08-07
-## Modified Date ： 2026-10-30
+## Created Date ： 2026-08-07
+## Modified Date ： 2026-11-01
 ##
 ## MessageBuilder — 下行命令构造器（PC → 小车）
 ## 构造 Orion 语义的 Dictionary（含 msgid 字段），由 WebSocketManager
 ## 通过 OrionMessages.Build_Cmd 编码为帧发送。
 ## cmd_send 信号签名保持 Dictionary 不变，下游调用点零改动。
+## task_44 Step 3：手动改两轴 (v, omega) 的 `build_manual_motion`，模式切换改走 `msgid 8`；
+##                 旧的运动枚举 builder（forward/backward/spin_*/stop）已删、不得恢复。
 
 class_name MessageBuilder
 extends RefCounted
 
 
-# 手动动作字符串 → Orion action 枚举（兼容 input_handler 的 _KEY_MAP 字符串）
-const _ACTION_STR_TO_ENUM := {
-	"forward": ProtocolDef.ACTION_FORWARD,
-	"backward": ProtocolDef.ACTION_BACKWARD,
-	"spin_left": ProtocolDef.ACTION_SPIN_LEFT,
-	"spin_right": ProtocolDef.ACTION_SPIN_RIGHT,
-	"stop": ProtocolDef.ACTION_STOP,
-	"beep": ProtocolDef.ACTION_BEEP,
-	"takeoff": ProtocolDef.ACTION_TAKEOFF,
-	"land": ProtocolDef.ACTION_LAND,
-}
+# ─── ORION_MANUAL_CONTROL (msgid 4)：两轴连续量 + 事件 ──────
+## task_44 §1.2 #3：8 B 运动（v f32 BE + omega f32 BE）/ 3 B 事件（action u8 + param i16 BE）。
+## 量级 v=0.45、|omega|=0.5 由调用方按 §1.4 的表填（本函数**不做**换算、不夹取）。
+
+static func build_manual_motion(v: float, omega: float) -> Dictionary:
+	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "v": v, "omega": omega}
 
 
-# ─── ORION_MANUAL_CONTROL (msgid 4)：手动动作 + 模式切换 ──────
-
-static func build_mode_switch_to_manual() -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_SWITCH_TO_MANUAL, "param": 0}
-
-
-static func build_mode_switch_to_auto() -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_SWITCH_TO_AUTO, "param": 0}
+## 事件类动作（beep / start_lidar / stop_lidar / takeoff / land）；action 走 ProtocolDef.ACTION_* 常量，
+## 非法 action 由 `Encode_Manual_Event` 报错并不发帧（本函数不造白名单）。
+static func build_manual_event(action: int, param: int = 0) -> Dictionary:
+	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": action, "param": param}
 
 
-static func build_manual_forward(speed: int = ProtocolDef.MANUAL_DEFAULT_SPEED) -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_FORWARD, "param": speed}
+# ─── ORION_MODE (msgid 8)：模式切换（task_44 §1.2 #4）─────────
+## 1 B（0 手动 / 1 自动）；**不再**走 msgid 4 的 action 8/9（枚举已删）。
+
+static func build_mode_switch_manual() -> Dictionary:
+	return {"msgid": ProtocolDef.MSGID_MODE, "mode": ProtocolDef.MODE_MANUAL}
 
 
-static func build_manual_backward(speed: int = ProtocolDef.MANUAL_DEFAULT_SPEED) -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_BACKWARD, "param": speed}
-
-
-static func build_manual_spin_left(speed: int = ProtocolDef.MANUAL_DEFAULT_SPEED) -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_SPIN_LEFT, "param": speed}
-
-
-static func build_manual_spin_right(speed: int = ProtocolDef.MANUAL_DEFAULT_SPEED) -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_SPIN_RIGHT, "param": speed}
-
-
-static func build_manual_action(action: String, speed: int = ProtocolDef.MANUAL_DEFAULT_SPEED) -> Dictionary:
-	return {
-		"msgid": ProtocolDef.MSGID_MANUAL_CONTROL,
-		"action": _ACTION_STR_TO_ENUM.get(action, ProtocolDef.ACTION_STOP),
-		"param": speed,
-	}
-
-
-static func build_manual_stop() -> Dictionary:
-	return {"msgid": ProtocolDef.MSGID_MANUAL_CONTROL, "action": ProtocolDef.ACTION_STOP, "param": 0}
+static func build_mode_switch_auto() -> Dictionary:
+	return {"msgid": ProtocolDef.MSGID_MODE, "mode": ProtocolDef.MODE_AUTO}
 
 
 # ─── ORION_TASK_SET (msgid 5)：任务队列整体替换（一帧 = 一辆车）─────────

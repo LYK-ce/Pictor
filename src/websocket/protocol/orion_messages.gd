@@ -1,19 +1,22 @@
 ## Presented by KeJi
-## Date ： 2026-09-01
-## Modified Date ： 2026-10-30
+## Created Date ： 2026-09-01
+## Modified Date ： 2026-11-01
 ##
 ## OrionMessages — Orion 协议 5 种消息 payload 编解码
 ## 规范文档：docs/orion_protocol.md
 ## 全部大端（使用 OrionFrame 的 Read_*/Write_* helper，Godot 原生 API 为小端）。
 ## Task 21：地图数据语义 = log-odds i8（−8~+8，u8 位模式直传）；三态由显示层按阈值 ±6 派生。
+## task_44 §1.2 #3/#4：msgid 4 **按长度分流**（8 B 运动 / 3 B 事件，其余整帧拒）；
+##                     模式切换独立为 msgid 8（1 B：0 手动 / 1 自动）。
 ##
 ## 消息清单：
 ##   msgid 1 ORION_POSE          38B        (u32 time_boot_ms + 6×f32 + valid u8 + sub_gx i32 + sub_gy i32 + rtk_fixed u8)
 ##   msgid 2 ORION_MAP_FULL      20B 头 + data（log-odds i8，−8~+8）
 ##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry（delta i8 差分，累加式）
-##   msgid 4 ORION_MANUAL_CONTROL 3B        (u8 action + i16 param)
+##   msgid 4 ORION_MANUAL_CONTROL 8B 运动   (v f32 BE + omega f32 BE) / 3B 事件 (action u8 + param i16 BE)
 ##   msgid 5 ORION_TASK_SET      1B + 变长/条（0/2 = 9B、3 = 13B；task_41 §3.2）
 ##   msgid 7 ORION_ASSIST_REQUEST 8B        (x f32 BE + y f32 BE；task_41 §5.3，仅上行)
+##   msgid 8 ORION_MODE          1B         (mode u8：0 手动 / 1 自动；task_44 §1.2 #4)
 ## 下行命令组装入口：Build_Cmd（cmd_send 的 Dictionary → 完整帧）
 
 class_name OrionMessages
@@ -140,9 +143,28 @@ static func Decode_Map_Delta(payload: PackedByteArray) -> Dictionary:
 	return {"ok": true, "time_boot_ms": OrionFrame.Read_U32_BE(payload, 0), "count": count, "entries": entries, "error": ""}
 
 
-# ─── ORION_MANUAL_CONTROL (msgid 4) — 3B ──────────────────────
+# ─── ORION_MANUAL_CONTROL (msgid 4) — 运动 8B / 事件 3B（task_44 §1.2 #3）─────
+## 布局（全部大端）：
+##   运动 8B：v f32 BE | omega f32 BE        （v m/s、omega rad/s；ω > 0 = 左转；全零 = 停车）
+##   事件 3B：action u8 | param i16 BE       （action ∈ {1 beep, 2 start_lidar, 3 stop_lidar, 4 takeoff, 5 land}）
+## **按长度分流**：8 → 运动、3 → 事件，其余长度**整帧拒**（解码 fail / 编码不发帧）。
+## 运动量级由 ProtocolDef.MANUAL_V_MAX / MANUAL_OMEGA_MAX 定值，编码器**不做**比例换算。
 
-static func Encode_Manual_Control(action: int, param: int) -> PackedByteArray:
+## 8 B 运动帧。非有限值仍原样写入（发送端 `ws_command_server` 已门控）；返回 8 B
+static func Encode_Manual_Motion(v: float, omega: float) -> PackedByteArray:
+	var buf := PackedByteArray()
+	buf.resize(8)
+	OrionFrame.Write_F32_BE(buf, 0, v)
+	OrionFrame.Write_F32_BE(buf, 4, omega)
+	return buf
+
+
+## 3 B 事件帧。action ∉ {1,2,3,4,5} → printerr + **返回空数组（不发帧）**
+static func Encode_Manual_Event(action: int, param: int) -> PackedByteArray:
+	if not _Is_Valid_Action(action):
+		printerr("[OrionMessages] manual_control action invalid: ", action,
+				"（事件仅 {1..5}；运动请用 Encode_Manual_Motion）→ refuse to encode（不发帧）")
+		return PackedByteArray()
 	var buf := PackedByteArray()
 	buf.resize(3)
 	buf[0] = action
@@ -150,11 +172,66 @@ static func Encode_Manual_Control(action: int, param: int) -> PackedByteArray:
 	return buf
 
 
-## 返回: { ok, action, param, error }
+## 返回: { ok, kind: "motion"|"event", v, omega, action, param, error }
+## kind=8 B → "motion"（有 v/omega，action/param 缺省 0）；kind=3 B → "event"（有 action/param，v/omega 为 0）
 static func Decode_Manual_Control(payload: PackedByteArray) -> Dictionary:
-	if payload.size() < 3:
-		return _Fail("manual_control payload too small: %d" % payload.size())
-	return {"ok": true, "action": payload[0], "param": OrionFrame.Read_S16_BE(payload, 1), "error": ""}
+	var n := payload.size()
+	if n == 8:
+		return {
+			"ok": true,
+			"kind": "motion",
+			"v": OrionFrame.Read_F32_BE(payload, 0),
+			"omega": OrionFrame.Read_F32_BE(payload, 4),
+			"action": 0,
+			"param": 0,
+			"error": "",
+		}
+	if n == 3:
+		var action := payload[0]
+		if not _Is_Valid_Action(action):
+			return _Fail("manual_control event action invalid: %d (expect 1..5)" % action)
+		return {
+			"ok": true,
+			"kind": "event",
+			"v": 0.0,
+			"omega": 0.0,
+			"action": action,
+			"param": OrionFrame.Read_S16_BE(payload, 1),
+			"error": "",
+		}
+	return _Fail("manual_control payload size mismatch: %d (expect 8 motion / 3 event)" % n)
+
+
+## action 白名单（与 ProtocolDef 的 5 个事件常量同口径）
+static func _Is_Valid_Action(action: int) -> bool:
+	return action == ProtocolDef.ACTION_BEEP \
+		or action == ProtocolDef.ACTION_START_LIDAR \
+		or action == ProtocolDef.ACTION_STOP_LIDAR \
+		or action == ProtocolDef.ACTION_TAKEOFF \
+		or action == ProtocolDef.ACTION_LAND
+
+
+# ─── ORION_MODE (msgid 8) — 1B（task_44 §1.2 #4）─────────────
+
+## 1 B 模式帧：0 = 手动、1 = 自动。非法值 → printerr + **返回空数组（不发帧）**
+static func Encode_Mode(mode: int) -> PackedByteArray:
+	if mode != ProtocolDef.MODE_MANUAL and mode != ProtocolDef.MODE_AUTO:
+		printerr("[OrionMessages] mode invalid: ", mode, " (expect 0 manual / 1 auto) → refuse to encode（不发帧）")
+		return PackedByteArray()
+	var buf := PackedByteArray()
+	buf.resize(1)
+	buf[0] = mode
+	return buf
+
+
+## 返回: { ok, mode, error }；长度**严格 1 B**、mode ∉ {0,1} → fail
+static func Decode_Mode(payload: PackedByteArray) -> Dictionary:
+	if payload.size() != 1:
+		return _Fail("mode payload size mismatch: %d (expect 1)" % payload.size())
+	var mode := payload[0]
+	if mode != ProtocolDef.MODE_MANUAL and mode != ProtocolDef.MODE_AUTO:
+		return _Fail("mode invalid value: %d (expect 0/1)" % mode)
+	return {"ok": true, "mode": mode, "error": ""}
 
 
 # ─── ORION_TASK_SET (msgid 5) — 任务队列整体替换（一帧一车）────────────
@@ -295,7 +372,17 @@ static func Build_Cmd(cmd: Dictionary) -> PackedByteArray:
 				cmd.get("data", PackedByteArray()),
 			)
 		ProtocolDef.MSGID_MANUAL_CONTROL:
-			payload = Encode_Manual_Control(cmd.get("action", ProtocolDef.ACTION_STOP), cmd.get("param", 0))
+			# task_44 §1.2 #3：按键驱动分流 —— 有 v/omega → 8 B 运动帧；否则有 action → 3 B 事件帧。
+			# 旧版固定发 3 B（action=STOP 兜底），运动枚举已删，兜底会让「无字段的 cmd」静默变成事件帧。
+			if cmd.has("v") or cmd.has("omega"):
+				payload = Encode_Manual_Motion(cmd.get("v", 0.0), cmd.get("omega", 0.0))
+			elif cmd.has("action"):
+				payload = Encode_Manual_Event(int(cmd.get("action", 0)), int(cmd.get("param", 0)))
+			else:
+				printerr("[OrionMessages] manual_control cmd 既无 v/omega 也无 action → 不发帧: ", cmd)
+				return PackedByteArray()
+		ProtocolDef.MSGID_MODE:
+			payload = Encode_Mode(int(cmd.get("mode", ProtocolDef.MODE_MANUAL)))
 		ProtocolDef.MSGID_TASK_SET:
 			payload = Encode_Task_Set(cmd.get("missions", []))
 			if payload.is_empty():
@@ -305,6 +392,10 @@ static func Build_Cmd(cmd: Dictionary) -> PackedByteArray:
 		_:
 			printerr("[OrionMessages] unknown cmd msgid: ", msgid)
 			return PackedByteArray()
+	if payload.is_empty():
+		# 编码器拒收（非法 action / 非法 mode）时不再发出半帧
+		printerr("[OrionMessages] msgid ", msgid, " 编码失败 → 不发帧")
+		return PackedByteArray()
 	return OrionFrame.Encode_Frame(msgid, PackedByteArray(), ProtocolDef.COMPID_TERMINAL, payload)
 
 

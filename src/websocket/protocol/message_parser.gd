@@ -1,11 +1,12 @@
 ## Presented by KeJi
-## Date ： 2026-09-01
-## Modified Date ： 2026-10-30
+## Created Date ： 2026-09-01
+## Modified Date ： 2026-11-01
 ##
 ## MessageParser — 上行消息解析器（小车 → PC）
 ## 纯静态方法，无状态。
 ## - JSON 文本帧：仅处理过渡期 hello（其余 JSON 消息忽略）
 ## - 二进制帧：Orion 帧解析（OrionFrame.Decode_Frame + 按 msgid 分发 payload），并透传 sysid
+## task_44 Step 3：msgid 4 按长度分流（8 B 运动 / 3 B 事件）；新增 msgid 8 模式帧。
 
 class_name MessageParser
 extends RefCounted
@@ -40,6 +41,8 @@ static func parse_json(text: String) -> Dictionary:
 ##   MSGID_POSE     → { time_boot_ms, x, y, z, vx, vy, yaw, valid, sub_gx, sub_gy, rtk_fixed }
 ##   MSGID_MAP_FULL → { chunk_x, chunk_y, cells, width, height, resolution }
 ##   MSGID_MAP_DELTA→ { voxels: [{gx, gy, delta}] }（delta 为 i8 差分，累加式）
+##   MSGID_MANUAL_CONTROL → 8 B → { kind: "motion", v, omega } / 3 B → { kind: "event", action, param }
+##   MSGID_MODE     → { mode }（0 手动 / 1 自动；task_44 §1.2 #4）
 ##   MSGID_ASSIST_REQUEST → { x, y }（task_41 §5.3，UAV 上行协助请求）
 static func parse_orion_frame(pkt: PackedByteArray) -> Dictionary:
 	var frame := OrionFrame.Decode_Frame(pkt)
@@ -81,6 +84,12 @@ static func parse_orion_frame(pkt: PackedByteArray) -> Dictionary:
 			if not mc.ok:
 				return _fail(mc.error)
 			data = mc
+
+		ProtocolDef.MSGID_MODE:
+			var md := OrionMessages.Decode_Mode(frame.payload)
+			if not md.ok:
+				return _fail(md.error)
+			data = md
 
 		ProtocolDef.MSGID_TASK_SET:
 			var ts := OrionMessages.Decode_Task_Set(frame.payload)

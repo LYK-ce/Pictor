@@ -1,8 +1,8 @@
 extends SceneTree
 
 ## Presented by KeJi
-## Date ： 2026-08-11
-## Modified Date ： 2026-10-30
+## Created Date ： 2026-08-11
+## Modified Date ： 2026-11-01
 ##
 ## Orion 协议 v2 编解码 roundtrip 测试（headless）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
@@ -11,8 +11,13 @@ extends SceneTree
 ## task_40 Step 4：Follow(type=2) 放开（`_test_follow_task_set`）
 ## task_41 Step 1：Containment(type=3) + TASK_SET **按 type 变长**（0/2 = 9B、3 = 13B），
 ##                 ∉{0,2,3} 由 Encode 报错并**返回空数组（不发帧）**，不再降级成 Goto
+## task_44 Step 3：msgid 4 改 8B 运动 / 3B 事件、msgid 8 模式帧、WASD 两轴纯函数
+##
+## ⚠️ 入口必须是 `_initialize`（不是 `_init`）：`_init` 阶段 autoload（EventBus）尚未注册，
+##    `load("res://src/control/input_handler.gd")` 会编译失败（Identifier not found: EventBus）。
+##    同理，本文件**不能 preload** 含 EventBus 的脚本，只能在 `_initialize` 里运行期 load()。
 
-func _init() -> void:
+func _initialize() -> void:
 	var ok := true
 	ok = ok and _test_frame()
 	ok = ok and _test_pose()
@@ -20,6 +25,8 @@ func _init() -> void:
 	ok = ok and _test_map_delta()
 	ok = ok and _test_manual_control()
 	ok = ok and _test_takeoff_land()
+	ok = ok and _test_mode()
+	ok = ok and _test_input_velocity()
 	ok = ok and _test_task_set()
 	ok = ok and _test_build_cmd()
 	ok = ok and _test_parser_dispatch()
@@ -158,31 +165,176 @@ func _test_map_delta() -> bool:
 
 
 func _test_manual_control() -> bool:
-	var payload := OrionMessages.Encode_Manual_Control(4, -50)
-	var dec := OrionMessages.Decode_Manual_Control(payload)
-	if not dec.ok or dec.action != 4 or dec.param != -50:
-		print("FAIL manual_control: ", dec); return false
+	# task_44 §1.2 #3：msgid 4 按长度分流（8B 运动 / 3B 事件），其余长度整帧拒
+	# —— 8B 运动：Step 1 的字节金标（与 Rust `messages.rs` 同一串）——
+	if OrionMessages.Encode_Manual_Motion(0.5, 0.0).hex_encode() != "3f00000000000000":
+		print("FAIL manual motion golden1: ", OrionMessages.Encode_Manual_Motion(0.5, 0.0).hex_encode()); return false
+	if OrionMessages.Encode_Manual_Motion(0.0, 0.0).hex_encode() != "0000000000000000":
+		print("FAIL manual motion golden2: ", OrionMessages.Encode_Manual_Motion(0.0, 0.0).hex_encode()); return false
+	if OrionMessages.Encode_Manual_Motion(0.0, -0.5).hex_encode() != "00000000bf000000":
+		print("FAIL manual motion golden3: ", OrionMessages.Encode_Manual_Motion(0.0, -0.5).hex_encode()); return false
+	# —— 8B 运动：§1.2 #11 定值（v=0.45、|omega|=0.5）——
+	var g_w := OrionMessages.Encode_Manual_Motion(0.45, 0.0)
+	if g_w.hex_encode() != "3ee6666600000000":
+		print("FAIL manual motion W golden: ", g_w.hex_encode()); return false
+	var g_wa := OrionMessages.Encode_Manual_Motion(0.45, 0.5)
+	if g_wa.hex_encode() != "3ee666663f000000":
+		print("FAIL manual motion W+A golden: ", g_wa.hex_encode()); return false
+	if OrionMessages.Encode_Manual_Motion(-0.45, 0.0).hex_encode() != "bee6666600000000":
+		print("FAIL manual motion S golden"); return false
+	if g_wa.size() != 8:
+		print("FAIL manual motion size: ", g_wa.size()); return false
+	# —— 8B roundtrip → kind = "motion" ——
+	var dec := OrionMessages.Decode_Manual_Control(OrionMessages.Encode_Manual_Motion(0.45, -0.5))
+	if not dec.ok or dec.kind != "motion":
+		print("FAIL manual motion decode: ", dec); return false
+	if absf(dec.v - 0.45) > 1e-6 or absf(dec.omega + 0.5) > 1e-6:
+		print("FAIL manual motion decode fields: ", dec); return false
+	# —— 3B 事件：action u8 + param i16 BE ——
+	var ev := OrionMessages.Encode_Manual_Event(ProtocolDef.ACTION_BEEP, -50)
+	if ev.size() != 3:
+		print("FAIL manual event size: ", ev.size()); return false
+	if ev[0] != 1 or ev.slice(1, 3) != PackedByteArray([0xFF, 0xCE]):
+		print("FAIL manual event bytes: ", ev); return false
+	var dec_ev := OrionMessages.Decode_Manual_Control(ev)
+	if not dec_ev.ok or dec_ev.kind != "event" or dec_ev.action != 1 or dec_ev.param != -50:
+		print("FAIL manual event decode: ", dec_ev); return false
+	# 编码门控：未知 action（9 = 已删的模式切换 action）→ 空数组（不发帧）
+	if not OrionMessages.Encode_Manual_Event(9, 0).is_empty():
+		print("FAIL manual event unknown action accepted"); return false
+	if not OrionMessages.Encode_Manual_Event(0, 0).is_empty():
+		print("FAIL manual event action 0 accepted（旧 FORWARD 已删）"); return false
+	# 解码门控：3B 里的非法 action → 整帧拒
+	if OrionMessages.Decode_Manual_Control(PackedByteArray([9, 0, 0])).ok:
+		print("FAIL manual event decode unknown action accepted"); return false
+	# —— 非法长度整帧拒（8/3 之外的 0/1/2/4/7/9）——
+	for n in [0, 1, 2, 4, 7, 9]:
+		var bad := PackedByteArray()
+		bad.resize(n)
+		if OrionMessages.Decode_Manual_Control(bad).ok:
+			print("FAIL manual control bad size ", n, " accepted"); return false
 	print("PASS manual_control"); return true
 
 
-# ─── Task 25：takeoff/land 手动命令（无人机，param 忽略）────────
+# ─── task_44 Step 3：msgid 8 模式帧（1 B：0 手动 / 1 自动）────────
+func _test_mode() -> bool:
+	if OrionMessages.Encode_Mode(ProtocolDef.MODE_MANUAL).hex_encode() != "00":
+		print("FAIL mode manual golden: ", OrionMessages.Encode_Mode(0).hex_encode()); return false
+	if OrionMessages.Encode_Mode(ProtocolDef.MODE_AUTO).hex_encode() != "01":
+		print("FAIL mode auto golden: ", OrionMessages.Encode_Mode(1).hex_encode()); return false
+	# roundtrip
+	var dec := OrionMessages.Decode_Mode(OrionMessages.Encode_Mode(ProtocolDef.MODE_AUTO))
+	if not dec.ok or dec.mode != 1:
+		print("FAIL mode roundtrip: ", dec); return false
+	# 非法值 / 非法长度 → 解码整帧拒
+	if OrionMessages.Decode_Mode(PackedByteArray([2])).ok:
+		print("FAIL mode invalid value accepted"); return false
+	if OrionMessages.Decode_Mode(PackedByteArray()).ok:
+		print("FAIL mode empty payload accepted"); return false
+	if OrionMessages.Decode_Mode(PackedByteArray([0, 1])).ok:
+		print("FAIL mode 2B payload accepted"); return false
+	# 编码门控：非法值 → 空数组（不发帧）
+	if not OrionMessages.Encode_Mode(7).is_empty():
+		print("FAIL mode encode invalid accepted"); return false
+	# Build_Cmd 走 msgid 8（整帧 = Step 1 金标）
+	var frame_auto := OrionMessages.Build_Cmd(MessageBuilder.build_mode_switch_auto())
+	if frame_auto.hex_encode() != "4f000000010000c80008010000":
+		print("FAIL mode auto frame golden: ", frame_auto.hex_encode()); return false
+	var d_auto := OrionFrame.Decode_Frame(frame_auto)
+	if not d_auto.ok or d_auto.msgid != 8 or not d_auto.sysid.is_empty() or d_auto.compid != 200:
+		print("FAIL mode auto frame header: ", d_auto); return false
+	if d_auto.payload.size() != 1 or d_auto.payload[0] != 1:
+		print("FAIL mode auto frame payload: ", d_auto.payload); return false
+	var d_manual := OrionFrame.Decode_Frame(OrionMessages.Build_Cmd(MessageBuilder.build_mode_switch_manual()))
+	if not d_manual.ok or d_manual.msgid != 8 or d_manual.payload.size() != 1 or d_manual.payload[0] != 0:
+		print("FAIL mode manual frame: ", d_manual); return false
+	print("PASS mode"); return true
+
+
+# ─── task_44 Step 3：WASD 两轴纯函数 + 键集合状态机（旧 bug 回归）──────
+func _test_input_velocity() -> bool:
+	# 运行期 load（不能 preload：编译期 EventBus 未注册，见文件头）
+	var ih: Script = load("res://src/control/input_handler.gd")
+	if ih == null:
+		print("FAIL load input_handler.gd"); return false
+	# ① 全松 → (0, 0)
+	if not _vec_eq(ih.Input_To_Velocity({}), 0.0, 0.0):
+		print("FAIL input velocity all released: ", ih.Input_To_Velocity({})); return false
+	# ② W → (v_max, 0)
+	if not _vec_eq(ih.Input_To_Velocity({KEY_W: true}), 0.45, 0.0):
+		print("FAIL input velocity W: ", ih.Input_To_Velocity({KEY_W: true})); return false
+	# ③ W+A → (v_max, +omega_max)；**左转为正**
+	if not _vec_eq(ih.Input_To_Velocity({KEY_W: true, KEY_A: true}), 0.45, 0.5):
+		print("FAIL input velocity W+A（左转应为正）: ", ih.Input_To_Velocity({KEY_W: true, KEY_A: true})); return false
+	# ④ 单键表（§1.4 手动行）
+	if not _vec_eq(ih.Input_To_Velocity({KEY_A: true}), 0.0, 0.5):
+		print("FAIL input velocity A"); return false
+	if not _vec_eq(ih.Input_To_Velocity({KEY_S: true}), -0.45, 0.0):
+		print("FAIL input velocity S"); return false
+	if not _vec_eq(ih.Input_To_Velocity({KEY_D: true}), 0.0, -0.5):
+		print("FAIL input velocity D"); return false
+	# ⑤ 相消：W+S → v=0；A+D → omega=0
+	if not _vec_eq(ih.Input_To_Velocity({KEY_W: true, KEY_S: true}), 0.0, 0.0):
+		print("FAIL input velocity W+S cancel"); return false
+	if not _vec_eq(ih.Input_To_Velocity({KEY_A: true, KEY_D: true}), 0.0, 0.0):
+		print("FAIL input velocity A+D cancel"); return false
+	# ⑥ 状态机（旧 bug 回归）：松开 A 必须**保留** W，不是 (0,0)
+	var h: Node = ih.new()
+	if h == null:
+		print("FAIL input_handler new()"); return false
+	if not _vec_eq(h.Apply_Key(KEY_W, true), 0.45, 0.0):
+		print("FAIL state W"); return false
+	if not _vec_eq(h.Apply_Key(KEY_A, true), 0.45, 0.5):
+		print("FAIL state W+A"); return false
+	if not _vec_eq(h.Apply_Key(KEY_A, false), 0.45, 0.0):
+		print("FAIL state release A should keep W (0.45,0)，旧 bug 是 (0,0)"); return false
+	if not _vec_eq(h.Apply_Key(KEY_W, false), 0.0, 0.0):
+		print("FAIL state release W → (0,0)"); return false
+	h.free()
+	# ⑦ 去重：同一状态连按两次，第二次返回 null（不发帧）
+	var h2: Node = ih.new()
+	if not (h2.Apply_Key(KEY_W, true) is Vector2):
+		print("FAIL dedupe first send"); return false
+	if h2.Apply_Key(KEY_W, true) != null:
+		print("FAIL dedupe second send should be null"); return false
+	h2.free()
+	# ⑧ Space 不再产生停车帧（协议已无 stop action）
+	var h3: Node = ih.new()
+	if h3.Apply_Key(KEY_SPACE, false) != null:
+		print("FAIL space should not send"); return false
+	h3.free()
+	print("PASS input_velocity"); return true
+
+
+func _vec_eq(v: Vector2, want_v: float, want_omega: float) -> bool:
+	return absf(v.x - want_v) <= 1e-6 and absf(v.y - want_omega) <= 1e-6
+
+
+# ─── task_44 §1.2 #3：事件类动作（起飞/降落）—————————————
 func _test_takeoff_land() -> bool:
-	var takeoff := MessageBuilder.build_manual_action("takeoff")
+	if ProtocolDef.ACTION_TAKEOFF != 4 or ProtocolDef.ACTION_LAND != 5:
+		print("FAIL takeoff/land const value"); return false
+	var takeoff := MessageBuilder.build_manual_event(ProtocolDef.ACTION_TAKEOFF)
 	if takeoff.action != ProtocolDef.ACTION_TAKEOFF:
 		print("FAIL takeoff action: ", takeoff); return false
-	var land := MessageBuilder.build_manual_action("land")
+	var land := MessageBuilder.build_manual_event(ProtocolDef.ACTION_LAND)
 	if land.action != ProtocolDef.ACTION_LAND:
 		print("FAIL land action: ", land); return false
-	if ProtocolDef.ACTION_TAKEOFF != 10 or ProtocolDef.ACTION_LAND != 11:
-		print("FAIL takeoff/land const value"); return false
-	var payload := OrionMessages.Encode_Manual_Control(ProtocolDef.ACTION_TAKEOFF, 0)
+	var payload := OrionMessages.Encode_Manual_Event(ProtocolDef.ACTION_TAKEOFF, 0)
+	if payload.size() != 3 or payload[0] != 4:
+		print("FAIL takeoff payload: ", payload); return false
 	var dec := OrionMessages.Decode_Manual_Control(payload)
-	if not dec.ok or dec.action != 10 or dec.param != 0:
+	if not dec.ok or dec.kind != "event" or dec.action != 4 or dec.param != 0:
 		print("FAIL takeoff roundtrip: ", dec); return false
-	var payload2 := OrionMessages.Encode_Manual_Control(ProtocolDef.ACTION_LAND, 0)
+	var payload2 := OrionMessages.Encode_Manual_Event(ProtocolDef.ACTION_LAND, 0)
 	var dec2 := OrionMessages.Decode_Manual_Control(payload2)
-	if not dec2.ok or dec2.action != 11:
+	if not dec2.ok or dec2.action != 5:
 		print("FAIL land roundtrip: ", dec2); return false
+	# 事件帧走 Build_Cmd（msgid 4、payload 3 B）
+	var frame := OrionMessages.Build_Cmd(takeoff)
+	var d_frame := OrionFrame.Decode_Frame(frame)
+	if not d_frame.ok or d_frame.msgid != 4 or d_frame.payload.size() != 3:
+		print("FAIL takeoff frame: ", d_frame); return false
 	print("PASS takeoff_land"); return true
 
 
@@ -254,17 +406,31 @@ func _test_task_set() -> bool:
 
 
 func _test_build_cmd() -> bool:
-	var cmd := MessageBuilder.build_manual_forward(80)
+	# task_44 §1.2 #11：手动量级定值 v=0.45、|omega|=0.5（W+A）
+	var cmd := MessageBuilder.build_manual_motion(0.45, 0.5)
 	var frame := OrionMessages.Build_Cmd(cmd)
 	if frame.is_empty():
 		print("FAIL build_cmd empty"); return false
+	# 整帧金标：空 sysid（sysid_len=0）+ compid=200 + msgid 4 + 8B payload + checksum 0
+	if frame.hex_encode() != "4f000000080000c800043ee666663f0000000000":
+		print("FAIL build_cmd W+A frame golden: ", frame.hex_encode()); return false
 	var dec := OrionFrame.Decode_Frame(frame)
 	# v2 终端上行：空 sysid（sysid_len=0）+ compid=200
 	if not dec.ok or dec.msgid != 4 or not dec.sysid.is_empty() or dec.compid != 200:
 		print("FAIL build_cmd frame: ", dec); return false
 	var mc := OrionMessages.Decode_Manual_Control(dec.payload)
-	if mc.action != ProtocolDef.ACTION_FORWARD or mc.param != 80:
+	if not mc.ok or mc.kind != "motion":
+		print("FAIL build_cmd payload kind: ", mc); return false
+	if absf(mc.v - 0.45) > 1e-6 or absf(mc.omega - 0.5) > 1e-6:
 		print("FAIL build_cmd payload: ", mc); return false
+
+	# 模式切换走 msgid 8（task_44 §1.2 #4）
+	var frame_mode := OrionMessages.Build_Cmd(MessageBuilder.build_mode_switch_auto())
+	if frame_mode.hex_encode() != "4f000000010000c80008010000":
+		print("FAIL build_cmd mode frame golden: ", frame_mode.hex_encode()); return false
+	var dec_mode := OrionFrame.Decode_Frame(frame_mode)
+	if not dec_mode.ok or dec_mode.msgid != 8 or dec_mode.payload.size() != 1 or dec_mode.payload[0] != 1:
+		print("FAIL build_cmd mode frame: ", dec_mode); return false
 
 	var cancel := MessageBuilder.build_auto_cancel()
 	var frame2 := OrionMessages.Build_Cmd(cancel)
@@ -293,6 +459,11 @@ func _test_parser_dispatch() -> bool:
 	var bad := OrionFrame.Encode_Frame(99, PackedByteArray([1]), 1, PackedByteArray([0]))
 	if MessageParser.parse_orion_frame(bad).ok:
 		print("FAIL parser unknown msgid accepted"); return false
+	# msgid 8（模式帧）→ data.mode（task_44 §1.2 #4）
+	var mode_frame := OrionFrame.Encode_Frame(8, PackedByteArray([1]), 1, OrionMessages.Encode_Mode(ProtocolDef.MODE_AUTO))
+	var r3 := MessageParser.parse_orion_frame(mode_frame)
+	if not r3.ok or r3.msgid != 8 or r3.data.mode != 1:
+		print("FAIL parser mode: ", r3); return false
 	print("PASS parser_dispatch"); return true
 
 
@@ -728,10 +899,14 @@ func _test_endianness() -> bool:
 	if mf.slice(16, 20) != PackedByteArray([0x3F, 0x00, 0x00, 0x00]):
 		print("FAIL map_full f32 BE: ", mf.slice(16, 20)); return false
 
-	# 5) manual param i16 大端：-50 → [FF CE]
-	var mc := OrionMessages.Encode_Manual_Control(0, -50)
+	# 5) manual 事件 param i16 大端：-50 → [FF CE]（task_44：3 B 只剩事件帧）
+	var mc := OrionMessages.Encode_Manual_Event(ProtocolDef.ACTION_BEEP, -50)
 	if mc.slice(1, 3) != PackedByteArray([0xFF, 0xCE]):
 		print("FAIL manual param i16 BE: ", mc.slice(1, 3)); return false
+	# 5b) manual 运动 f32 大端：v=0.45 → 0x3EE66666 → [3E E6 66 66]（§1.2 #11 定值）
+	var mm := OrionMessages.Encode_Manual_Motion(ProtocolDef.MANUAL_V_MAX, 0.0)
+	if mm.slice(0, 4) != PackedByteArray([0x3E, 0xE6, 0x66, 0x66]):
+		print("FAIL manual v f32 BE: ", mm.slice(0, 4)); return false
 
 	# 6) task_set x=12.5 → 0x41480000 → [41 48 00 00]（偏移 2..6：跳过 [m_count][type]，task_36 无成员段）
 	var ts := OrionMessages.Encode_Task_Set([{"type": 0, "x": 12.5, "y": 0.0}])

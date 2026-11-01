@@ -1,7 +1,7 @@
 extends Node
 ## Presented by KeJi
-## Date ： 2026-09-01
-## Modified Date ： 2026-10-30
+## Created Date ： 2026-09-01
+## Modified Date ： 2026-11-01
 ##
 ## KernelBridge — Rust 桥（PleiadesKernel）与 EventBus 的适配器
 ## 上行：robot_frame → parse_orion_frame → EventBus（pose/map）；peer_* → registered/unregistered/name
@@ -54,7 +54,7 @@ func _on_robot_frame(data: PackedByteArray) -> void:
 			# 上行协助请求（UAV → 地面站）：vid = 请求者 sysid；只有 coop_controller 消费
 			EventBus.assist_request_received.emit(vid, float(r.data.get("x", 0.0)), float(r.data.get("y", 0.0)))
 		_:
-			# MANUAL_CONTROL / TASK_SET 为下行消息，不从车上行，忽略
+			# MANUAL_CONTROL (msgid 4) / TASK_SET (5) / MODE (8) 为下行消息，不从车上行，忽略
 			pass
 
 

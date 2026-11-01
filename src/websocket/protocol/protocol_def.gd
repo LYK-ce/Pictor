@@ -1,10 +1,12 @@
 ## Presented by KeJi
-## Date ： 2026-08-07
-## Modified Date ： 2026-10-30
+## Created Date ： 2026-08-07
+## Modified Date ： 2026-11-01
 ##
 ## ProtocolDef — Orion 统一协议常量定义
 ## 规范文档：docs/orion_protocol.md
 ## 所有协议相关的魔法数字集中管理，避免散落各处。
+## task_44 §1.2 #3/#4/#11：msgid 4 改「运动 8B / 事件 3B」，模式切换独立为 msgid 8，
+## 手动量级定值 v=0.45 m/s、|omega|=0.5 rad/s（**不做**比例换算）。
 
 class_name ProtocolDef
 extends RefCounted
@@ -25,24 +27,34 @@ const MSGID_TASK_SET := 5
 ## UAV → 地面站的协助请求（task_41 §5.3）：payload = x f32 BE | y f32 BE（严格 8 B）
 ## 单向：只有地面站订阅（Kernel 侧 [Network].subscribe_topics），车/机不发也不订阅。
 const MSGID_ASSIST_REQUEST := 7
+## 模式切换（task_44 §1.2 #4）：payload = mode u8（0 = 手动 / 1 = 自动），严格 1 B。
+## **不再**走 msgid 4 的 action 8/9（那两个枚举已删）。
+const MSGID_MODE := 8
 
 
-# ─── ORION_MANUAL_CONTROL action 枚举 ────────────────────────
+# ─── ORION_MANUAL_CONTROL 事件 action 枚举（task_44 §1.2 #3：重排为 1..5）─────
+## 运动（前进/后退/左转/右转/停车）已不再是 action：改用 8 B 的 (v, omega) 连续量，
+## 停车 = 全零运动帧。本枚举只剩**事件类**动作，payload 走 3 B（action u8 + param i16 BE）。
 
-const ACTION_FORWARD := 0
-const ACTION_BACKWARD := 1
-const ACTION_SPIN_LEFT := 2
-const ACTION_SPIN_RIGHT := 3
-const ACTION_STOP := 4
-const ACTION_BEEP := 5
-const ACTION_START_LIDAR := 6
-const ACTION_STOP_LIDAR := 7
-const ACTION_SWITCH_TO_MANUAL := 8
-const ACTION_SWITCH_TO_AUTO := 9
-const ACTION_TAKEOFF := 10   # Task 25：起飞（无人机，param 忽略，固定 1.8m）
-const ACTION_LAND := 11      # Task 25：降落（无人机，param 忽略）
+const ACTION_BEEP := 1
+const ACTION_START_LIDAR := 2
+const ACTION_STOP_LIDAR := 3
+const ACTION_TAKEOFF := 4    # 起飞（无人机，param 忽略，固定 1.8m）
+const ACTION_LAND := 5       # 降落（无人机，param 忽略）
 
-const MANUAL_DEFAULT_SPEED := 50   # Task 25：车端已忽略速度档位（forward/backward/spin），仅 beep 时长 param 生效
+
+# ─── ORION_MODE (msgid 8) mode 枚举（task_44 §1.2 #4）──────────
+
+const MODE_MANUAL := 0
+const MODE_AUTO := 1
+
+
+# ─── 手动量级定值（task_44 §1.2 #11 / §1.4）────────────────────
+## v = 0.45 m/s、|omega| = 0.5 rad/s；ω > 0 = 左转。执行器内**不做任何比例换算**、
+## 不读百分比。`input_handler`（发帧）、`ws_command_server`（`manual` 指令的越界门控）
+## 与单测共用这一份，禁止在别处再写一份字面量。
+const MANUAL_V_MAX := 0.45
+const MANUAL_OMEGA_MAX := 0.5
 
 
 # ─── ORION_TASK_SET mission type ─────────────────────────────

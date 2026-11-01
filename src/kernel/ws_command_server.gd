@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Created Date ： 2026-10-29
-## Modified Date ： 2026-10-30
+## Modified Date ： 2026-11-01
 ##
 ## WsCommandServer — Pictor 的 WS 命令通道（task_40 Step 3 / 任务文档 §四）
 ## 让**外部 Python 进程**下发命令、读回遥测，Python 不需要懂 ORION 字节：
@@ -11,7 +11,7 @@
 ## 默认上行：`pose` + `peer`，`pose_hz = 2`，按 `targets` 过滤（§八 #5）——10 Hz × N 车直连会变火管。
 ##
 ## 契约（docs/project_code_overview.md §九 有同一份表）：
-##   下行 cmd：`vehicles` / `task_set` / `mode` / `subscribe`
+##   下行 cmd：`vehicles` / `task_set` / `mode` / `manual` / `subscribe`
 ##   上行 event：`vehicles` / `pose` / `peer_connected` / `peer_info` / `peer_disconnected` / `map_delta` / `map_full`
 ##   `{"ack": id, "ok": true}` **只代表"已交给 kernel"**，不代表车端收到（任务文档 §四.5 ⚠️）；
 ##   到达判定只能用上行 pose 的 valid / gx / gy 或 sim 日志。
@@ -264,6 +264,8 @@ func _Handle_Command(link: Dictionary, obj: Dictionary) -> void:
 			_Handle_Task_Set(link, req_id, obj)
 		"mode":
 			_Handle_Mode(link, req_id, obj)
+		"manual":
+			_Handle_Manual(link, req_id, obj)
 		"subscribe":
 			_Handle_Subscribe(link, req_id, obj)
 		_:
@@ -322,7 +324,7 @@ func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 	_Send_Ack(link, req_id, true)
 
 
-## `mode`：to ∈ {auto, manual}，每车一帧 `MANUAL_CONTROL`（action 8/9）。
+## `mode`：to ∈ {auto, manual}，每车一帧 **msgid 8**（`MODE_MANUAL` / `MODE_AUTO`，1 B；task_44 §1.2 #4）。
 func _Handle_Mode(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 	var to := str(obj.get("to", "")).strip_edges().to_lower()
 	if to != "auto" and to != "manual":
@@ -339,8 +341,47 @@ func _Handle_Mode(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 			_Send_Ack(link, req_id, false, "unknown vehicle: %s" % token)
 			return
 		vids.append(vid)
-	var cmd := MessageBuilder.build_mode_switch_to_auto() if to == "auto" \
-		else MessageBuilder.build_mode_switch_to_manual()
+	var cmd := MessageBuilder.build_mode_switch_auto() if to == "auto" \
+		else MessageBuilder.build_mode_switch_manual()
+	for vid: String in vids:
+		EventBus.cmd_send.emit([vid] as Array[String], cmd)
+	_Send_Ack(link, req_id, true)
+
+
+## `manual`：两轴连续量手动帧（task_44 Step 3，8 B 运动 payload）。
+## `v` / `omega` 必须是有限数值，且 `|v| <= MANUAL_V_MAX`、`|omega| <= MANUAL_OMEGA_MAX`
+## （§1.2 #11 定值，**不做**比例换算）——越界 `ok:false` 且**一帧都不发**。
+## `v = omega = 0` 合法（= 停车帧）。本入口给 `pictor_ws_ctl.py manual` 用，手动链才有脚本化验证手段。
+func _Handle_Manual(link: Dictionary, req_id: int, obj: Dictionary) -> void:
+	var raw_v: Variant = obj.get("v", null)
+	var raw_w: Variant = obj.get("omega", null)
+	if not ((raw_v is float) or (raw_v is int)) or not ((raw_w is float) or (raw_w is int)):
+		_Send_Ack(link, req_id, false, "manual 缺少数值 v/omega")
+		return
+	var fv := float(raw_v)
+	var fw := float(raw_w)
+	if not is_finite(fv) or not is_finite(fw):
+		_Send_Ack(link, req_id, false, "v/omega 必须是有限数值")
+		return
+	if absf(fv) > ProtocolDef.MANUAL_V_MAX + 1e-6:
+		_Send_Ack(link, req_id, false, "v 越界：|v| <= %f（收到 %f）" % [ProtocolDef.MANUAL_V_MAX, fv])
+		return                          # 一帧都不发
+	if absf(fw) > ProtocolDef.MANUAL_OMEGA_MAX + 1e-6:
+		_Send_Ack(link, req_id, false,
+				"omega 越界：|omega| <= %f（收到 %f）" % [ProtocolDef.MANUAL_OMEGA_MAX, fw])
+		return                          # 一帧都不发
+	var targets := _String_Array(obj.get("targets", []))
+	if targets.is_empty():
+		_Send_Ack(link, req_id, false, "targets 不能为空")
+		return
+	var vids: Array[String] = []
+	for token: String in targets:
+		var vid := _Resolve_Target(token)
+		if vid.is_empty():
+			_Send_Ack(link, req_id, false, "unknown vehicle: %s" % token)
+			return                      # 一帧都不发
+		vids.append(vid)
+	var cmd := MessageBuilder.build_manual_motion(fv, fw)
 	for vid: String in vids:
 		EventBus.cmd_send.emit([vid] as Array[String], cmd)
 	_Send_Ack(link, req_id, true)

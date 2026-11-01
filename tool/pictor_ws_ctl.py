@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Presented by KeJi
 # Created Date ： 2026-10-29
-# Modified Date ： 2026-10-30
+# Modified Date ： 2026-11-01
 #
 # pictor_ws_ctl.py — Pictor WS 命令通道的 Python 控制脚本（task_40 Step 3 / 任务文档 §四）
 #
@@ -21,6 +21,8 @@
 #   python3 Pictor/tool/pictor_ws_ctl.py follow --target uav_1 [--x 0 --y 0] [--type 2] [--watch 45]
 #   python3 Pictor/tool/pictor_ws_ctl.py containment --target uav_1 --cx 64 --cy 64 --half 8 [--watch 45]
 #   python3 Pictor/tool/pictor_ws_ctl.py monitor [--seconds 10] [--pose-hz 2] [--events pose,peer]
+#   python3 Pictor/tool/pictor_ws_ctl.py manual --v 0.45 --omega 0.5 --dry-run [--json]
+#   python3 Pictor/tool/pictor_ws_ctl.py manual --v 0.45 --omega 0.5 --targets ugv_1   # 真发一帧
 #
 # `follow` 走 type=2（仅 WS 入口；`x`/`y` 在 Follow 语义下预留填 0）；
 # `containment` 走 type=3（`--cx/--cy` = 正方形中心、`--half` = 半边长 m，task_41 §3.2）；
@@ -78,6 +80,26 @@ GOTO_GOLDEN_HEX = "01004280000042800000"                              # type=0, 
 FOLLOW_GOLDEN_HEX = "01020000000000000000"                            # type=2, x=y=0  → 10 B
 CONTAINMENT_GOLDEN_HEX = "0103428000004280000041000000"               # type=3, cx=cy=64, half=8 → 14 B
 MIXED_GOLDEN_HEX = "0200428000004280000003428000004280000041000000"   # [Goto(64,64), Containment(64,64,8)] → 23 B
+
+# ─── ORION_MANUAL_CONTROL (msgid 4) / ORION_MODE (msgid 8)（task_44 Step 3）─────
+# msgid 4 按长度分流：8 B 运动（v f32 BE | omega f32 BE）、3 B 事件（action u8 + param i16 BE）。
+# 本脚本只发**运动**帧（`manual --v --omega`）；模式切换走 msgid 8（1 B：0 手动 / 1 自动）。
+# 手动量级定值 §1.2 #11：v = 0.45 m/s、|omega| = 0.5 rad/s，**不做**比例换算。
+MSGID_MANUAL_CONTROL = 4
+MSGID_MODE = 8
+MAGIC = 0x4F
+COMPID_TERMINAL = 200
+MANUAL_V_MAX = 0.45
+MANUAL_OMEGA_MAX = 0.5
+# 8 B 运动 payload 金标（与 Rust `messages.rs` / GDScript `test_orion_protocol.gd` 同一串）
+MANUAL_PAYLOAD_GOLDEN = {
+    (0.45, 0.5): "3ee666663f000000",      # W+A（§1.4 手动行）
+    (0.0, 0.0): "0000000000000000",       # 全松 = 停车帧（§1.2 #6）
+}
+# 整帧金标（空 sysid + compid=200 + msgid 4 + checksum 0）
+MANUAL_FRAME_GOLDEN = {
+    (0.45, 0.5): "4f000000080000c800043ee666663f0000000000",   # 20 B
+}
 
 
 class CtlError(Exception):
@@ -712,6 +734,146 @@ async def cmd_containment(client, args):
     return await _send_single_mission(client, args, mission, "containment")
 
 
+# ─── task_44 Step 3：手动两轴（8 B 运动帧）──────────────────────────
+
+def encode_manual_motion_payload(v, omega):
+    """8 B 运动 payload：v f32 BE | omega f32 BE（与 GDScript `Encode_Manual_Motion` 同布局）。"""
+    return struct.pack(">ff", float(v), float(omega))
+
+
+def build_frame(msgid, payload):
+    """拼一条完整 ORION 帧（终端上行：空 sysid + compid=200 + seq 0 + checksum 0）。
+
+    与 GDScript `OrionFrame.Encode_Frame` 同布局：
+      magic u8 | payload_len u32 BE | seq u8 | sysid_len u8 | compid u8 | msgid u16 BE | payload | checksum u16
+    payload 从偏移 10 开始（sysid_len=0 时帧头固定 10 B）。
+    """
+    return (bytes([MAGIC]) + struct.pack(">I", len(payload)) + bytes([0, 0, COMPID_TERMINAL])
+            + struct.pack(">H", int(msgid)) + payload + b"\x00\x00")
+
+
+def _manual_range_error(v, omega):
+    """两轴越界 / 非有限 → 错误串；合法 → ""。
+
+    与 `ws_command_server._Handle_Manual` 同口径（1e-6 容差，浮点字面量不算越界）。
+    """
+    if not math.isfinite(v) or not math.isfinite(omega):
+        return "v/omega 必须是有限数值"
+    if abs(v) > MANUAL_V_MAX + 1e-6:
+        return "v 越界：|v| <= %g（收到 %g）" % (MANUAL_V_MAX, v)
+    if abs(omega) > MANUAL_OMEGA_MAX + 1e-6:
+        return "omega 越界：|omega| <= %g（收到 %g）" % (MANUAL_OMEGA_MAX, omega)
+    return ""
+
+
+def cmd_manual_dry_run(args):
+    """不连车：拼 8 B 运动 payload + 整帧，断言金标与 f32 回读（判据 4 的 dry-run 级证据）。
+
+    `manual --v 0.45 --omega 0.5 --dry-run` → payload=`3ee666663f000000`、
+    整帧=`4f000000080000c800043ee666663f0000000000`（20 B）；参数越界 → 退出码 2。
+    """
+    v = float(args.v)
+    omega = float(args.omega)
+    err = _manual_range_error(v, omega)
+    if err:
+        return fail_json({"ok": False, "dry_run": True, "error": err}, EXIT_ENV, args.quiet)
+    payload = encode_manual_motion_payload(v, omega)
+    frame = build_frame(MSGID_MANUAL_CONTROL, payload)
+    out = {
+        "ok": True,
+        "dry_run": True,
+        "msgid": MSGID_MANUAL_CONTROL,
+        "v": v,
+        "omega": omega,
+        "payload": payload.hex(),
+        "frame": frame.hex(),
+        "frame_len": len(frame),
+    }
+    golden = MANUAL_PAYLOAD_GOLDEN.get((v, omega))
+    if golden is not None and out["payload"] != golden:
+        out.update(ok=False, error="payload 金标不符：期望 %s 得到 %s" % (golden, out["payload"]))
+        return fail_json(out, EXIT_FAIL, args.quiet)
+    golden_frame = MANUAL_FRAME_GOLDEN.get((v, omega))
+    if golden_frame is not None and out["frame"] != golden_frame:
+        out.update(ok=False, error="整帧金标不符：期望 %s 得到 %s" % (golden_frame, out["frame"]))
+        return fail_json(out, EXIT_FAIL, args.quiet)
+    # 回读：payload 必须按 >ff 解回同一对浮点（独立校验大端 + 4 B 对齐，不靠金标）
+    back_v, back_w = struct.unpack(">ff", frame[10:18])
+    out["roundtrip_ok"] = (math.isclose(back_v, v, abs_tol=1e-6)
+                           and math.isclose(back_w, omega, abs_tol=1e-6))
+    if not out["roundtrip_ok"]:
+        out.update(ok=False, error="f32 回读不符：%r,%r" % (back_v, back_w))
+        return fail_json(out, EXIT_FAIL, args.quiet)
+    if args.json:
+        emit_json(out)
+    else:
+        log("[ctl] dry-run：msgid=%d v=%g omega=%g（不连车）" % (MSGID_MANUAL_CONTROL, v, omega), args.quiet)
+        log("  payload=%s" % out["payload"], args.quiet)
+        log("  frame=%s（%d B）roundtrip_ok=%s" % (out["frame"], out["frame_len"], out["roundtrip_ok"]),
+            args.quiet)
+    return EXIT_OK
+
+
+async def cmd_manual(client, args):
+    """发一帧 8 B 运动帧（`manual` → Pictor `ws_command_server._Handle_Manual`）。
+
+    本地先按同一口径断言（量级定值 + payload 金标）再发，避免把错帧算到 Pictor 头上。
+    Pictor 侧同口径门控：`|v| <= 0.45`、`|omega| <= 0.5`，越界 `ok:false` 且**一帧不发**。
+    """
+    v = float(args.v)
+    omega = float(args.omega)
+    err = _manual_range_error(v, omega)
+    if err:
+        return fail_json({"ok": False, "cmd": "manual", "error": err}, EXIT_ENV, args.quiet)
+    payload = encode_manual_motion_payload(v, omega)
+    frame = build_frame(MSGID_MANUAL_CONTROL, payload)
+    out = {
+        "ok": False,
+        "cmd": "manual",
+        "msgid": MSGID_MANUAL_CONTROL,
+        "v": v,
+        "omega": omega,
+        "payload": payload.hex(),
+        "frame": frame.hex(),
+        "frame_len": len(frame),
+    }
+    golden = MANUAL_PAYLOAD_GOLDEN.get((v, omega))
+    if golden is not None and out["payload"] != golden:
+        out["error"] = "payload 金标不符：期望 %s 得到 %s" % (golden, out["payload"])
+        return fail_json(out, EXIT_FAIL, args.quiet)
+
+    targets = args.targets or ([args.target] if args.target else [])
+    if not targets:
+        out["error"] = "manual 需要 --targets（车名 / hex vid）或 --target"
+        return fail_json(out, EXIT_ENV, args.quiet)
+    out["targets"] = targets
+
+    if args.register_timeout > 0:
+        reg_window = min(args.register_timeout, max(1.0, args.timeout * 0.5))
+        row, how = await wait_registered(client, targets[0], reg_window)
+        out["target_vid"] = str(row.get("vid", "")) if row is not None else ""
+        out["resolved_by"] = how
+        if row is None:
+            out["error"] = "车未注册：%s" % targets[0]
+            return fail_json(out, EXIT_FAIL, args.quiet)
+        log("[ctl] 目标 %s → vid=%s（resolved_by=%s）" % (targets[0], out["target_vid"], how),
+            args.quiet)
+
+    ack = await client.cmd({"cmd": "manual", "targets": targets, "v": v, "omega": omega})
+    out["ack"] = ack.get("ack")
+    if not ack.get("ok", False):
+        out["ack_ok"] = False
+        out["error"] = ack.get("error", "<无 error>")
+        return fail_json(out, EXIT_FAIL, args.quiet)
+    out["ack_ok"] = True
+    out["ok"] = True
+    log("[ctl] manual 已交给 kernel：payload=%s（%d B；⚠ 不等于车端收到）"
+        % (out["payload"], out["frame_len"]), args.quiet)
+    if args.json:
+        emit_json(out)
+    return EXIT_OK
+
+
 async def cmd_monitor(client, args):
     events = parse_csv(args.events)
     for name in events:
@@ -843,6 +1005,19 @@ def build_parser():
     p.add_argument("--register-timeout", type=float, default=DEFAULT_REGISTER_TIMEOUT_S)
     p.set_defaults(func=cmd_containment)
 
+    p = sub.add_parser("manual", parents=[common],
+                       help="发一帧 8 B 运动帧（task_44：v/omega 两轴；--dry-run 不连车）")
+    p.add_argument("--v", type=float, required=True,
+                   help="前进速度 m/s（定值上限 ±%g；0 = 不前后走）" % MANUAL_V_MAX)
+    p.add_argument("--omega", type=float, required=True,
+                   help="偏航角速度 rad/s（±%g；> 0 = 左转）" % MANUAL_OMEGA_MAX)
+    p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                   help="只拼帧并断言金标，不连 Pictor（判据 4 的最小证据）")
+    p.add_argument("--target", default=None, help="车名或 hex vid（未给 --targets 时用）")
+    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
+    p.add_argument("--register-timeout", type=float, default=DEFAULT_REGISTER_TIMEOUT_S)
+    p.set_defaults(func=cmd_manual)
+
     p = sub.add_parser("monitor", parents=[common], help="订阅并统计事件（判据 4 用）")
     p.add_argument("--seconds", type=float, default=10.0)
     p.set_defaults(func=cmd_monitor)
@@ -865,6 +1040,9 @@ def build_url(args):
 def main(argv=None):
     ap = build_parser()
     args = ap.parse_args(argv)
+    # --dry-run 短路：只拼帧 + 断言金标，不连 Pictor、不进 asyncio（判据 4 的 dry-run 级证据）
+    if getattr(args, "dry_run", False):
+        return cmd_manual_dry_run(args)
     args.targets = parse_csv(args.targets)
     args.pose_hz = resolve_pose_hz(args)
     url = build_url(args)
