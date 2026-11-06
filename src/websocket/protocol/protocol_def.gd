@@ -1,12 +1,13 @@
 ## Presented by KeJi
 ## Created Date ： 2026-08-07
-## Modified Date ： 2026-11-01
+## Modified Date ： 2026-11-05
 ##
 ## ProtocolDef — Orion 统一协议常量定义
 ## 规范文档：docs/orion_protocol.md
 ## 所有协议相关的魔法数字集中管理，避免散落各处。
 ## task_44 §1.2 #3/#4/#11：msgid 4 改「运动 8B / 事件 3B」，模式切换独立为 msgid 8，
 ## 手动量级定值 v=0.45 m/s、|omega|=0.5 rad/s（**不做**比例换算）。
+## task_48 Step 4：mission type 加 4 = Face（到点朝向，9 B）、5 = Guard（值守，17 B）。
 
 class_name ProtocolDef
 extends RefCounted
@@ -60,17 +61,25 @@ const MANUAL_OMEGA_MAX := 0.5
 # ─── ORION_TASK_SET mission type ─────────────────────────────
 
 ## 车端 `command_decode` 认的 type：0 = Goto、2 = Follow（task_37 §五.2）、
-## 3 = Containment 封控（task_41 §3.2：x/y = 正方形中心，half_side = 半边长 m）。
-## TASK_SET 记录**按 type 变长**（0/2 = 9 B、3 = 13 B）。不在 {0,2,3} 的条目由
+## 3 = Containment 封控（task_41 §3.2：x/y = 正方形中心，half_side = 半边长 m）、
+## 4 = Face（task_48 §2.2：x/y = 要朝向的世界点）、
+## 5 = Guard（task_48 §2.8：x/y = 值守点、fx/fy = 注视点，朝向 = atan2(fy−y, fx−x)）。
+## TASK_SET 记录**按 type 变长**（0/2/4 = 9 B、3 = 13 B、5 = 17 B）。不在 {0,2,3,4,5} 的条目由
 ## `Encode_Task_Set` 报错并**返回空数组（整帧不发）**，不再降级成 Goto；
 ## 旧值 1（Circle）已随 task_36 §十一 #27 废弃，常量删除、不得复用。
-## Containment 只有 sim 机栈真实现；真车 / 真机 / sim 车栈建平凡树（一拍 Success + warn）。
+## Containment / Face / Guard 的车端真树见 `pleiades-ugv/src/ugv/mission/`；Face 四端都是真叶子
+## （含真机 UAV）；Guard 只有车端真树，机端平凡（一拍 Success + warn）。
 const MISSION_TYPE_GOTO := 0
 const MISSION_TYPE_FOLLOW := 2
 const MISSION_TYPE_CONTAINMENT := 3
+## Face（task_48 §2.2）：9 B = type u8 | fx f32 BE | fy f32 BE，(fx, fy) = 到点后要朝向的世界点
+const MISSION_TYPE_FACE := 4
+## Guard（task_48 §2.8）：17 B = type u8 | x | y | fx | fy（值守点 + 注视点）
+const MISSION_TYPE_GUARD := 5
 
 ## 字符串/数字 → mission type 整数（"goto"/未知字符串 → 0；"follow" → 2；"containment"/"contain" → 3；
-## 数字原样返回 —— 数字的合法性由 `Encode_Task_Set` 门控，本函数不造白名单）
+## "face" → 4；"guard" → 5；数字原样返回 —— 数字的合法性由 `Encode_Task_Set` 门控，本函数不造白名单）
+## 未知字符串仍 → 0（Goto，LLM 防御路径）。
 ## "circle" 的环形几何已上移到地面站（TargetAlloc.compute_targets 的 shape 参数），不进协议
 static func Mission_Type_From(t) -> int:
 	if t is String:
@@ -79,6 +88,10 @@ static func Mission_Type_From(t) -> int:
 				return MISSION_TYPE_FOLLOW
 			"containment", "contain":
 				return MISSION_TYPE_CONTAINMENT
+			"face":
+				return MISSION_TYPE_FACE
+			"guard":
+				return MISSION_TYPE_GUARD
 			_:
 				return MISSION_TYPE_GOTO
 	return int(t)

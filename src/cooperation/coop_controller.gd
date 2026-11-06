@@ -1,13 +1,14 @@
 ## Presented by KeJi
 ## Created Date ： 2026-10-30
-## Modified Date ： 2026-10-31
+## Modified Date ： 2026-11-05
 ##
 ## CoopController — 地面站协同控制（task_41 §二.10 / §5.5.11）
 ##
 ## 链路：UAV 树 InsideSquare → gossipsub `pleiades/robot/assist_request`（msgid 7）
 ##       → kernel robot_frame → MessageParser → kernel_bridge → EventBus.assist_request_received
 ##       → 本模块：取在线 UGV **去掉请求者**（排除请求者：请求车不进 targets）→ N = 剩余车数
-##         （4 车 → 3 点，θ = 2π·i/3）→ N 个等角点（3 m 环）→ **最近一对一**分配 → 逐车一帧 Goto。
+##         （4 车 → 3 点，θ = 2π·i/3）→ N 个等角点（3 m 环）→ **最近一对一**分配 → 逐车一帧
+##         **[Goto(环点), Face(人)]**（task_48 §2.4 / 口径 #4：成对下发，走到位后再朝人）。
 ##
 ## 口径（不可自行改）：环半径 3 m；角度 θ_i = 2π·i/N（offset = 0）；N ≤ 6 全排列暴力取总距离
 ##   最小，N > 6 贪心；**每次给每辆车都发**（TASK_SET 整体替换，接受 reset 顿挫，不额外限流）。
@@ -215,4 +216,7 @@ func _on_assist_request(requester_id: String, x: float, y: float) -> void:
 		print("[Coop] 指派 车=%s 点#%d 目标=(%.2f,%.2f) 当前距=%.2f m"
 				% [id, idx2, p2.x, p2.y, (cars[id] as Vector2).distance_to(p2)])
 		# **一帧一车**（task_36 §十一 #27 / §5.5.11）
-		_bus.cmd_send.emit([id] as Array[String], MessageBuilder.build_auto_push_goto(p2.x, p2.y))
+		# task_48 §2.4 / 口径 #4：成对两条 —— Goto(环点) + Face(人)。`center` 是人 / 入侵者的
+		# 世界坐标（本函数入参，**不是** `points[idx]`、也不是车自身位姿），车到位后朝它。
+		_bus.cmd_send.emit([id] as Array[String],
+				MessageBuilder.build_auto_push_goto_face(p2.x, p2.y, center.x, center.y))

@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Created Date ： 2026-10-29
-## Modified Date ： 2026-11-01
+## Modified Date ： 2026-11-05
 ##
 ## WsCommandServer — Pictor 的 WS 命令通道（task_40 Step 3 / 任务文档 §四）
 ## 让**外部 Python 进程**下发命令、读回遥测，Python 不需要懂 ORION 字节：
@@ -11,7 +11,7 @@
 ## 默认上行：`pose` + `peer`，`pose_hz = 2`，按 `targets` 过滤（§八 #5）——10 Hz × N 车直连会变火管。
 ##
 ## 契约（docs/project_code_overview.md §九 有同一份表）：
-##   下行 cmd：`vehicles` / `task_set` / `mode` / `manual` / `subscribe`
+##   下行 cmd：`vehicles` / `task_set` / `guard` / `mode` / `manual` / `subscribe`
 ##   上行 event：`vehicles` / `pose` / `peer_connected` / `peer_info` / `peer_disconnected` / `map_delta` / `map_full`
 ##   `{"ack": id, "ok": true}` **只代表"已交给 kernel"**，不代表车端收到（任务文档 §四.5 ⚠️）；
 ##   到达判定只能用上行 pose 的 valid / gx / gy 或 sim 日志。
@@ -262,6 +262,8 @@ func _Handle_Command(link: Dictionary, obj: Dictionary) -> void:
 			_Send_Json(link, {"event": "vehicles", "list": _Vehicle_List()})
 		"task_set":
 			_Handle_Task_Set(link, req_id, obj)
+		"guard":
+			_Handle_Guard(link, req_id, obj)
 		"mode":
 			_Handle_Mode(link, req_id, obj)
 		"manual":
@@ -274,8 +276,9 @@ func _Handle_Command(link: Dictionary, obj: Dictionary) -> void:
 
 ## `task_set`：**先全部解析成功再发**（原子）。每辆车一帧，missions 交给
 ## `MessageBuilder.build_task_set` → `Encode_Task_Set`（按 type 变长，未知 type 直接不发帧）。
-## 本函数是**命令入口门控**：type ∉ {0,2,3} → `ok:false`；type=3 必须带有限且 > 0 的 `half_side`
-## → 否则 `ok:false` 且**一帧都不发**（`Encode` 的 printerr 不出现在 ack 里，外部脚本看不到）。
+## 本函数是**命令入口门控**：type ∉ {0,2,3,4,5} → `ok:false`；type=3 必须带有限且 > 0 的 `half_side`；
+## type=5 必须带有限 `fx`/`fy` → 否则 `ok:false` 且**一帧都不发**
+## （`Encode` 的 printerr 不出现在 ack 里，外部脚本看不到）。
 func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 	var targets := _String_Array(obj.get("targets", []))
 	if targets.is_empty():
@@ -295,12 +298,15 @@ func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 		if not ((mx is float) or (mx is int)) or not ((my is float) or (my is int)):
 			_Send_Ack(link, req_id, false, "mission 缺少数值 x/y")
 			return
-		# type 门控（task_41 §3.2）：{0 Goto, 2 Follow, 3 Containment} 之外**整帧不发**
+		# type 门控（task_41 §3.2 / task_48 §三）：{0 Goto, 2 Follow, 3 Containment, 4 Face, 5 Guard}
+		# 之外**整帧不发**
 		var mt: Variant = item.get("type", ProtocolDef.MISSION_TYPE_GOTO)
 		var mty: int = ProtocolDef.Mission_Type_From(mt) if (mt is String) else int(mt)
 		if mty != ProtocolDef.MISSION_TYPE_GOTO \
 				and mty != ProtocolDef.MISSION_TYPE_FOLLOW \
-				and mty != ProtocolDef.MISSION_TYPE_CONTAINMENT:
+				and mty != ProtocolDef.MISSION_TYPE_CONTAINMENT \
+				and mty != ProtocolDef.MISSION_TYPE_FACE \
+				and mty != ProtocolDef.MISSION_TYPE_GUARD:
 			_Send_Ack(link, req_id, false, "unsupported mission type: %d" % mty)
 			return                                  # 一帧都不发
 		var one := {"type": mty, "x": float(mx), "y": float(my)}
@@ -311,6 +317,17 @@ func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 				_Send_Ack(link, req_id, false, "bad half_side")
 				return                              # 一帧都不发
 			one["half_side"] = float(mh)
+		elif mty == ProtocolDef.MISSION_TYPE_GUARD:
+			# task_48 §三：17 B 的 Guard 必须带**有限** `fx`/`fy`（编码器本身不校验，见
+			# `Encode_Task_Set` 的注释 —— 有限性是**入口门控**，不是编解码规则）
+			var mfx: Variant = item.get("fx", null)
+			var mfy: Variant = item.get("fy", null)
+			if not ((mfx is float) or (mfx is int)) or not ((mfy is float) or (mfy is int)) \
+					or not is_finite(float(mfx)) or not is_finite(float(mfy)):
+				_Send_Ack(link, req_id, false, "bad guard fx/fy")
+				return                              # 一帧都不发
+			one["fx"] = float(mfx)
+			one["fy"] = float(mfy)
 		missions.append(one)
 	var vids: Array[String] = []
 	for token: String in targets:
@@ -321,6 +338,44 @@ func _Handle_Task_Set(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 		vids.append(vid)
 	for vid: String in vids:
 		EventBus.cmd_send.emit([vid] as Array[String], MessageBuilder.build_task_set(missions))
+	_Send_Ack(link, req_id, true)
+
+
+## `guard`（task_48 Step 4）：`{cmd:"guard", targets:[...], x, y, fx, fy}` → 一车一帧 TaskSet(type=5)。
+## x/y = 值守点、fx/fy = 注视点（车端朝向 = `atan2(fy − y, fx − x)`）。**先全部校验成功再发**（原子）：
+## 四个数值都必须有限、`targets` 非空且都能解析 → 否则 `ok:false` 且**一帧都不发**。
+## **不做**「值守点与注视点重合 → 拒」（那是 sim 控制口的口径，本入口只保证 4 个数有限）。
+func _Handle_Guard(link: Dictionary, req_id: int, obj: Dictionary) -> void:
+	var raw_gx: Variant = obj.get("x", null)
+	var raw_gy: Variant = obj.get("y", null)
+	var raw_fx: Variant = obj.get("fx", null)
+	var raw_fy: Variant = obj.get("fy", null)
+	if not ((raw_gx is float) or (raw_gx is int)) \
+			or not ((raw_gy is float) or (raw_gy is int)) \
+			or not ((raw_fx is float) or (raw_fx is int)) \
+			or not ((raw_fy is float) or (raw_fy is int)):
+		_Send_Ack(link, req_id, false, "guard 缺少数值 x/y/fx/fy")
+		return
+	var gx := float(raw_gx)
+	var gy := float(raw_gy)
+	var gfx := float(raw_fx)
+	var gfy := float(raw_fy)
+	if not is_finite(gx) or not is_finite(gy) or not is_finite(gfx) or not is_finite(gfy):
+		_Send_Ack(link, req_id, false, "guard x/y/fx/fy 必须是有限数值")
+		return
+	var targets := _String_Array(obj.get("targets", []))
+	if targets.is_empty():
+		_Send_Ack(link, req_id, false, "targets 不能为空")
+		return
+	var vids: Array[String] = []
+	for token: String in targets:
+		var vid := _Resolve_Target(token)
+		if vid.is_empty():
+			_Send_Ack(link, req_id, false, "unknown vehicle: %s" % token)
+			return                      # 一帧都不发
+		vids.append(vid)
+	for vid: String in vids:
+		EventBus.cmd_send.emit([vid] as Array[String], MessageBuilder.build_guard(gx, gy, gfx, gfy))
 	_Send_Ack(link, req_id, true)
 
 

@@ -1,11 +1,15 @@
 extends Node2D
 ## Presented by KeJi
-## Date: 2026-08-05
+## Created Date ： 2026-08-05
+## Modified Date ： 2026-11-05
 ##
 ## AutoHandler — 自动控制编排：
 ## 1. 右键 Goto：逐车算点、逐车单独发帧（task_36 §12.7；每帧只有该车自己的点）
+##    （task_48：每帧 `[Goto(目标点), Face(锚点)]` 两条，口径 #4）
 ## 2. LLM 指令编排：监听 EventBus.command_requested → 拼车辆上下文 → 调 util.llm.generate_cmds
 ##    → 接收 cmds_generated → 按车分发（Task 27）
+## 3. X 键随访（task_48 Step 4.7）：只处理 EventBus.follow_requested 的 UI 提示 ——
+##    下发在 input_handler（避免双发），本文件不发帧
 ## 瞬态态：点命令按钮（如巡逻）后等待目标点，左键执行 / 右键取消
 
 @export var app_state: AppStateResource
@@ -22,6 +26,7 @@ var _pending_action := PendingAction.NONE
 
 func _ready() -> void:
 	EventBus.command_requested.connect(_on_command_requested)
+	EventBus.follow_requested.connect(_on_follow_requested)
 	# 延迟到所有节点 _ready 完成后连接 LLM 信号（util.llm 的 @onready 此时才赋值）
 	_connect_llm_signals.call_deferred()
 
@@ -97,6 +102,20 @@ func _on_request_failed(msg: String) -> void:
 	printerr("[AutoHandler] LLM 请求失败: ", msg)
 
 
+## X 键随访的 UI 侧提示（task_48 Step 4.7）：**不发帧**（下发在 `input_handler._Toggle_Follow`，
+## 避免双发）。车/机端 `detector` 未启用时 Follow 会原地 Hold，这里打一行说明避免误判「按键没生效」。
+func _on_follow_requested(vehicle_id: String) -> void:
+	var label := vehicle_id
+	if vehicle_registry != null:
+		var v: Dictionary = vehicle_registry.vehicles.get(vehicle_id, {})
+		var nm := str(v.get("name", ""))
+		if not nm.is_empty():
+			label = nm
+	EventBus.log_message.emit(
+			"👀 随访 %s（车端需 [detector].enabled=true，否则 Follow 原地 Hold）" % label, "info")
+	print("[AutoHandler] 随访提示 → %s（detector 未启用则原地 Hold）" % label)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Z 键进入 Circle 待命；Esc 取消待命
 	if event is InputEventKey:
@@ -159,6 +178,7 @@ func _execute_pending(_mb: InputEventMouseButton) -> void:
 
 ## 逐车下发：位姿门控 → 逐车算点 → 每辆车单独一帧（task_36 §十一 #27 / §12.7.3 第 4 条）
 ## 一帧只含一辆车自己的目标点；名单段已从协议删除（§十一 #28）。
+## task_48 §2.4：每帧**两条** —— Goto(算出的点) + Face(`anchor`，即圆心 / 目标点)，口径 #4。
 func _dispatch_per_vehicle(selected: Array[String], anchor: Vector2, shape: String) -> void:
 	if selected.is_empty():
 		return
@@ -176,5 +196,6 @@ func _dispatch_per_vehicle(selected: Array[String], anchor: Vector2, shape: Stri
 		return
 	var points := TargetAlloc.compute_targets(gate.ok, anchor, shape)
 	for id: String in points:
+		# task_48 §2.4 / 口径 #4：成对两条 —— Goto(算出的点) + Face(`anchor` = 圆心 / 目标点)
 		EventBus.cmd_send.emit([id] as Array[String],
-			MessageBuilder.build_auto_push_goto(points[id].x, points[id].y))
+			MessageBuilder.build_auto_push_goto_face(points[id].x, points[id].y, anchor.x, anchor.y))

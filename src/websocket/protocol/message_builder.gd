@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Created Date ： 2026-08-07
-## Modified Date ： 2026-11-01
+## Modified Date ： 2026-11-05
 ##
 ## MessageBuilder — 下行命令构造器（PC → 小车）
 ## 构造 Orion 语义的 Dictionary（含 msgid 字段），由 WebSocketManager
@@ -8,6 +8,7 @@
 ## cmd_send 信号签名保持 Dictionary 不变，下游调用点零改动。
 ## task_44 Step 3：手动改两轴 (v, omega) 的 `build_manual_motion`，模式切换改走 `msgid 8`；
 ##                 旧的运动枚举 builder（forward/backward/spin_*/stop）已删、不得恢复。
+## task_48 Step 4：派车改「Goto + Face 成对两条」（口径 #4）；新增 `build_guard`（type=5）。
 
 class_name MessageBuilder
 extends RefCounted
@@ -49,11 +50,37 @@ static func build_auto_push_goto(x: float, y: float) -> Dictionary:
 	}
 
 
+## task_48 §2.4 / 口径 #4：派车 = `[Goto(环点/算出的点), Face(人 / 锚点)]` **成对两条**。
+## TASK_SET 是**整队替换**语义，两条必须成对下发 —— 只发 Goto 的话车到位就结束、
+## 不会触发 Face 叶子（Step 2 的 Leaf 只在队列里有 type=4 时才被建）。
+## 注意：type=4 在字节层只有两个 f32，所以 **Face 的 (fx,fy) 用 `x`/`y` 键承载**
+## （与 Rust 把朝向点放在 `MissionItem.x/y` 同口径）。
+static func build_auto_push_goto_face(x: float, y: float, fx: float, fy: float) -> Dictionary:
+	return {
+		"msgid": ProtocolDef.MSGID_TASK_SET,
+		"missions": [
+			{"type": ProtocolDef.MISSION_TYPE_GOTO, "x": x, "y": y},
+			{"type": ProtocolDef.MISSION_TYPE_FACE, "x": fx, "y": fy},
+		],
+	}
+
+
+## task_48 §2.8：单条 Guard = 17 B（type=5 | x | y | fx | fy）。
+## x/y = **值守点**（人进警戒区前待的位置）、fx/fy = **注视点**；
+## 车端朝向 = `atan2(fy − y, fx − x)`。Guard 是**持续任务**：不取消不会自己结束。
+static func build_guard(x: float, y: float, fx: float, fy: float) -> Dictionary:
+	return {
+		"msgid": ProtocolDef.MSGID_TASK_SET,
+		"missions": [{"type": ProtocolDef.MISSION_TYPE_GUARD, "x": x, "y": y, "fx": fx, "fy": fy}],
+	}
+
+
 ## 一次下发多条任务（LLM 指令聚合用），整体替换语义
-## mission type 归一化：LLM 输出 "goto"/"follow"/"containment" → 整数；未知字符串仍 → 0（防御性）；
-## int 原样交给 Encode 门控
-## type 契约 = {0 Goto, 2 Follow, 3 Containment}；不在其中的由 Encode_Task_Set **报错并不发帧**
-## （单一门控点，本函数不造白名单）；`half_side` 只有条目自带时才拷（type=3 必须带，由 Encode 校验）
+## mission type 归一化：LLM 输出 "goto"/"follow"/"containment"/"face"/"guard" → 整数；
+## 未知字符串仍 → 0（防御性）；int 原样交给 Encode 门控
+## type 契约 = {0 Goto, 2 Follow, 3 Containment, 4 Face, 5 Guard}；不在其中的由 `Encode_Task_Set`
+## **报错并不发帧**（单一门控点，本函数不造白名单）；`half_side` / `fx` / `fy` 只有条目自带时才拷
+## （type=3 必须带 `half_side`，type=5 必须带 `fx`/`fy` —— 由 Encode / ws 入口校验）
 static func build_task_set(missions: Array) -> Dictionary:
 	var normalized: Array = []
 	for m in missions:
@@ -64,6 +91,10 @@ static func build_task_set(missions: Array) -> Dictionary:
 		}
 		if m.has("half_side"):
 			one["half_side"] = m.get("half_side")
+		if m.has("fx"):
+			one["fx"] = m.get("fx")
+		if m.has("fy"):
+			one["fy"] = m.get("fy")
 		normalized.append(one)
 	return {"msgid": ProtocolDef.MSGID_TASK_SET, "missions": normalized}
 

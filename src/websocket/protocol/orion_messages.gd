@@ -1,6 +1,6 @@
 ## Presented by KeJi
 ## Created Date ： 2026-09-01
-## Modified Date ： 2026-11-01
+## Modified Date ： 2026-11-05
 ##
 ## OrionMessages — Orion 协议 5 种消息 payload 编解码
 ## 规范文档：docs/orion_protocol.md
@@ -14,7 +14,7 @@
 ##   msgid 2 ORION_MAP_FULL      20B 头 + data（log-odds i8，−8~+8）
 ##   msgid 3 ORION_MAP_DELTA     6B + 9B/entry（delta i8 差分，累加式）
 ##   msgid 4 ORION_MANUAL_CONTROL 8B 运动   (v f32 BE + omega f32 BE) / 3B 事件 (action u8 + param i16 BE)
-##   msgid 5 ORION_TASK_SET      1B + 变长/条（0/2 = 9B、3 = 13B；task_41 §3.2）
+##   msgid 5 ORION_TASK_SET      1B + 变长/条（0/2/4 = 9B、3 = 13B、5 = 17B；task_41 §3.2 / task_48 §三）
 ##   msgid 7 ORION_ASSIST_REQUEST 8B        (x f32 BE + y f32 BE；task_41 §5.3，仅上行)
 ##   msgid 8 ORION_MODE          1B         (mode u8：0 手动 / 1 自动；task_44 §1.2 #4)
 ## 下行命令组装入口：Build_Cmd（cmd_send 的 Dictionary → 完整帧）
@@ -240,24 +240,31 @@ static func Decode_Mode(payload: PackedByteArray) -> Dictionary:
 ##   type 0 Goto        : type u8 | x  f32 BE | y f32 BE                 = 9 B
 ##   type 2 Follow      : type u8 | x  f32 BE | y f32 BE                 = 9 B
 ##   type 3 Containment : type u8 | cx f32 BE | cy f32 BE | half f32 BE  = 13 B
+##   type 4 Face        : type u8 | x  f32 BE | y f32 BE                 = 9 B（x/y = fx/fy）
+##   type 5 Guard       : type u8 | x | y | fx f32 BE | fy f32 BE        = 17 B
 ## 语义（task_36 §12.3.4）：mission_count == 0 → 取消（空队列替换，停车待命）；> 0 → 逐条入队
 ## 未知 type（含退役的 1 = Circle）无法确定长度 → **整帧拒**（解码）/ **整帧不发**（编码）
 ## task_36 §十一 #27 / #28：协同上移到指挥层 —— 地面站逐车算点、逐车单独发帧，
 ## 每帧 missions[0] 就是"该车自己的点"，载荷里不再有名单段（旧的 peer 名单已删）。
 
 
-## 记录长度表（含 type 字节；task_41 §3.2）。0 = 未知 type → 整帧不编码、不发帧
+## 记录长度表（含 type 字节；task_41 §3.2 / task_48 §三）。0 = 未知 type → 整帧不编码、不发帧
 static func _Mission_Wire_Len(mt: int) -> int:
 	match mt:
-		ProtocolDef.MISSION_TYPE_GOTO, ProtocolDef.MISSION_TYPE_FOLLOW:
+		ProtocolDef.MISSION_TYPE_GOTO, ProtocolDef.MISSION_TYPE_FOLLOW, ProtocolDef.MISSION_TYPE_FACE:
 			return 9
 		ProtocolDef.MISSION_TYPE_CONTAINMENT:
 			return 13
+		ProtocolDef.MISSION_TYPE_GUARD:
+			return 17
 		_:
 			return 0
 
 
-## missions: Array[{type, x, y, half_side}]；type 只允许 {0 Goto, 2 Follow, 3 Containment}
+## missions: Array[{type, x, y, half_side, fx, fy}]；type 只允许
+## {0 Goto, 2 Follow, 3 Containment, 4 Face, 5 Guard}。
+## type=4 在字节层只有两个 f32 —— 本文件用 `x`/`y` 键承载 (fx,fy)（与 Rust 把朝向点放在 `MissionItem.x/y` 同口径）；
+## type=5 额外读 `fx`/`fy`，缺省 0.0（**不做**有限性校验，与 Rust `decode_task_set` 同口径）。
 ## 未知 type（含退役的 1）或 type=3 的非法 `half_side` → printerr + **返回空数组（不降级、不发帧）**。
 ## 空数组由 `Build_Cmd` 转成空帧，`kernel_bridge` 已有 `frame.is_empty()` 短路（不会真的发出去）。
 static func Encode_Task_Set(missions: Array) -> PackedByteArray:
@@ -275,7 +282,8 @@ static func Encode_Task_Set(missions: Array) -> PackedByteArray:
 		var ln := _Mission_Wire_Len(mty)
 		if ln == 0:
 			printerr("[OrionMessages] mission type ", mty,
-					" unsupported (only {0,2,3}): Goto/Follow/Containment → refuse to encode（不发帧）")
+					" unsupported (only {0,2,3,4,5}): Goto/Follow/Containment/Face/Guard",
+					" → refuse to encode（不发帧）")
 			return PackedByteArray()
 		if mty == ProtocolDef.MISSION_TYPE_CONTAINMENT:
 			var mh: Variant = mi.get("half_side", null)
@@ -299,11 +307,15 @@ static func Encode_Task_Set(missions: Array) -> PackedByteArray:
 		OrionFrame.Write_F32_BE(buf, off + 5, mi2.get("y", 0.0))
 		if ln2 == 13:
 			OrionFrame.Write_F32_BE(buf, off + 9, float(mi2.get("half_side", 0.0)))
+		elif ln2 == 17:
+			OrionFrame.Write_F32_BE(buf, off + 9, float(mi2.get("fx", 0.0)))
+			OrionFrame.Write_F32_BE(buf, off + 13, float(mi2.get("fy", 0.0)))
 		off += ln2
 	return buf
 
 
-## 返回: { ok, mission_count, missions: Array[{type, x, y, half_side}], error }
+## 返回: { ok, mission_count, missions: Array[{type, x, y, half_side, fx, fy}], error }
+## `fx`/`fy` 与 Rust `MissionItem.fx/fy` 同语义：**仅 type=5 有值**，其余恒 0.0。
 ## 校验：空 payload → fail（取消帧也必须是 1 字节 mission_count=0）；
 ##      逐条按 type 取变长；未知 type / 截断 / 末尾偏移 != payload 长度 → fail（**整帧拒**）
 static func Decode_Task_Set(payload: PackedByteArray) -> Dictionary:
@@ -326,12 +338,19 @@ static func Decode_Task_Set(payload: PackedByteArray) -> Dictionary:
 			"x": OrionFrame.Read_F32_BE(payload, off + 1),
 			"y": OrionFrame.Read_F32_BE(payload, off + 5),
 			"half_side": 0.0,
+			"fx": 0.0,
+			"fy": 0.0,
 		}
 		if mt == ProtocolDef.MISSION_TYPE_CONTAINMENT:
 			var mh := OrionFrame.Read_F32_BE(payload, off + 9)
 			if not is_finite(mh) or mh <= 0.0:
 				return _Fail("task_set containment half_side invalid: %f" % mh)
 			one["half_side"] = mh
+		elif mt == ProtocolDef.MISSION_TYPE_GUARD:
+			# task_48 §三：type=5 多两个 f32（`off+9..13` = fx、`off+13..17` = fy）；
+			# 与 `x/y` 同样**不做有限性校验**（Goto 的 x/y 也不校验，勿在此新增拒绝条件）
+			one["fx"] = OrionFrame.Read_F32_BE(payload, off + 9)
+			one["fy"] = OrionFrame.Read_F32_BE(payload, off + 13)
 		missions.append(one)
 		off += ln
 	if off != payload.size():

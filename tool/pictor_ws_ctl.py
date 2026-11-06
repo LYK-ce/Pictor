@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Presented by KeJi
 # Created Date ： 2026-10-29
-# Modified Date ： 2026-11-01
+# Modified Date ： 2026-11-05
 #
 # pictor_ws_ctl.py — Pictor WS 命令通道的 Python 控制脚本（task_40 Step 3 / 任务文档 §四）
 #
@@ -20,6 +20,7 @@
 #   python3 Pictor/tool/pictor_ws_ctl.py task   --target ugv_1 --x 70 --y 64 [--tol 0.3] [--frames 3]
 #   python3 Pictor/tool/pictor_ws_ctl.py follow --target uav_1 [--x 0 --y 0] [--type 2] [--watch 45]
 #   python3 Pictor/tool/pictor_ws_ctl.py containment --target uav_1 --cx 64 --cy 64 --half 8 [--watch 45]
+#   python3 Pictor/tool/pictor_ws_ctl.py guard  --target ugv_1 --x 64 --y 64 --fx 64 --fy 128 [--watch 45]
 #   python3 Pictor/tool/pictor_ws_ctl.py monitor [--seconds 10] [--pose-hz 2] [--events pose,peer]
 #   python3 Pictor/tool/pictor_ws_ctl.py manual --v 0.45 --omega 0.5 --dry-run [--json]
 #   python3 Pictor/tool/pictor_ws_ctl.py manual --v 0.45 --omega 0.5 --targets ugv_1   # 真发一帧
@@ -27,6 +28,10 @@
 # `follow` 走 type=2（仅 WS 入口；`x`/`y` 在 Follow 语义下预留填 0）；
 # `containment` 走 type=3（`--cx/--cy` = 正方形中心、`--half` = 半边长 m，task_41 §3.2）；
 # `--type 9` 只作「未知类型 → **明确报错、一帧不发**」的探针（task_41 起不再降级成 Goto）。
+#
+# `face` 走 type=4、`guard` 走 type=5（task_48 §三）：Face 用 `follow --type 4 --x --y`（`--x/--y` = 要朝向的世界点），
+# `guard` 有自己的子命令（`--x/--y` = 值守点、`--fx/--fy` = 注视点，走 Pictor 的 `guard` 专用入口
+# `{cmd:"guard", targets, x, y, fx, fy}`，与 `ws_command_server._Handle_Guard` 同口径）。
 #
 # 退出码：0 = 断言通过；1 = 断言失败；2 = 环境错误（连不上 / 无 websockets / 参数非法）。
 #
@@ -66,13 +71,17 @@ FINAL_ERR_GATE_M = 2.0
 KNOWN_EVENTS = ("pose", "peer", "map_delta", "map_full")
 
 # ─── mission type（task_41 Step 1 起：变长记录 {0,2,3}；与 `ProtocolDef` 同一套约定）─────
-# TASK_SET 记录按 type 变长：0/2 = 9 B、3 = 13 B。Pictor 的 `Encode_Task_Set` 对 ∉{0,2,3}
-# 的条目**报错并返回空数组（不发帧）**，不再降级成 0。下面这些常量**只用于本地断言/日志**，
-# 真编码在 GDScript 侧；`mission_wire_len` 与 `_Mission_Wire_Len` 同口径。
+# TASK_SET 记录按 type 变长（task_48 §三）：0/2/4 = 9 B、3 = 13 B、5 = 17 B。Pictor 的
+# `Encode_Task_Set` 对 ∉{0,2,3,4,5} 的条目**报错并返回空数组（不发帧）**，不再降级成 0。
+# 下面这些常量**只用于本地断言/日志**，真编码在 GDScript 侧；`mission_wire_len` 与
+# `_Mission_Wire_Len`（`src/websocket/protocol/orion_messages.gd:252-261`）同口径。
 MISSION_TYPE_GOTO = 0
 MISSION_TYPE_FOLLOW = 2
 MISSION_TYPE_CONTAINMENT = 3
-SUPPORTED_MISSION_TYPES = (MISSION_TYPE_GOTO, MISSION_TYPE_FOLLOW, MISSION_TYPE_CONTAINMENT)
+MISSION_TYPE_FACE = 4
+MISSION_TYPE_GUARD = 5
+SUPPORTED_MISSION_TYPES = (MISSION_TYPE_GOTO, MISSION_TYPE_FOLLOW, MISSION_TYPE_CONTAINMENT,
+                           MISSION_TYPE_FACE, MISSION_TYPE_GUARD)
 FOLLOW_POSE_HZ = 10.0          # follow / containment 的 pose 采样率（K3 要用 10 Hz 判"不打转"）
 
 # TASK_SET payload 金标（与 Rust `messages.rs` / GDScript `test_orion_protocol.gd` 同一串）
@@ -80,6 +89,8 @@ GOTO_GOLDEN_HEX = "01004280000042800000"                              # type=0, 
 FOLLOW_GOLDEN_HEX = "01020000000000000000"                            # type=2, x=y=0  → 10 B
 CONTAINMENT_GOLDEN_HEX = "0103428000004280000041000000"               # type=3, cx=cy=64, half=8 → 14 B
 MIXED_GOLDEN_HEX = "0200428000004280000003428000004280000041000000"   # [Goto(64,64), Containment(64,64,8)] → 23 B
+FACE_GOLDEN_HEX = "01044280000042800000"                              # type=4, x=y=64 → 10 B（task_48 §三）
+GUARD_GOLDEN_HEX = "010542800000428000004280000043000000"             # type=5, 值守点(64,64)、注视点(64,128) → 18 B
 
 # ─── ORION_MANUAL_CONTROL (msgid 4) / ORION_MODE (msgid 8)（task_44 Step 3）─────
 # msgid 4 按长度分流：8 B 运动（v f32 BE | omega f32 BE）、3 B 事件（action u8 + param i16 BE）。
@@ -304,11 +315,17 @@ def emit_json(obj):
 
 
 def mission_wire_len(t):
-    """记录长度（含 type 字节）；0 = 未知 type（不产生字节、不发帧）。"""
+    """记录长度（含 type 字节，task_48 §三）；0 = 未知 type（不产生字节、不发帧）。
+
+    与 Rust `mission_wire_len`（`pleiades-base/src/Robot/core/protocol/messages.rs`）/
+    GDScript `_Mission_Wire_Len` 三处**同口径**：`0|2|4 → 9`、`3 → 13`、`5 → 17`。
+    """
     return {
         MISSION_TYPE_GOTO: 9,
         MISSION_TYPE_FOLLOW: 9,
         MISSION_TYPE_CONTAINMENT: 13,
+        MISSION_TYPE_FACE: 9,
+        MISSION_TYPE_GUARD: 17,
     }.get(t, 0)
 
 
@@ -320,6 +337,10 @@ def _normalize_mission_type(t):
             return MISSION_TYPE_FOLLOW
         if key in ("containment", "contain"):
             return MISSION_TYPE_CONTAINMENT
+        if key == "face":
+            return MISSION_TYPE_FACE
+        if key == "guard":
+            return MISSION_TYPE_GUARD
         return MISSION_TYPE_GOTO
     try:
         return int(t)
@@ -331,9 +352,11 @@ def expected_task_set_payload(missions):
     """按变长 ORION_TASK_SET 布局复刻 payload（task_41 §3.2）。
 
     返回 {ok, hex, len, types, error}。**与 `Encode_Task_Set` 同口径**：
-      - 0/2 记录 9 B、3 记录 13 B；总长 1 + Σlen；
-      - type ∉ {0,2,3} → **不产生任何字节**（ok=False, hex=""），不再降级成 Goto；
-      - type=3 的 `half_side` 缺失 / 非数值 / 非有限 / <= 0 → 同样 ok=False。
+      - 0/2/4 记录 9 B、3 记录 13 B、5 记录 17 B（task_48 §三）；总长 1 + Σlen；
+      - type ∉ {0,2,3,4,5} → **不产生任何字节**（ok=False, hex=""），不再降级成 Goto；
+      - type=3 的 `half_side` 缺失 / 非数值 / 非有限 / <= 0 → 同样 ok=False；
+      - type=5 的 `fx` / `fy` **不做**有限性校验（缺省 0.0，与 `Encode_Task_Set` / Rust 同口径；
+        有限性门控在 Pictor 入口 `_Handle_Task_Set`）。
 
     ⚠️ 这**不是协议实现**（真编码在 `src/websocket/protocol/orion_messages.gd`），
     只用来断言"将要发出去的帧"符合预期，并把 hex 记进 `--json` 便于比对。
@@ -360,6 +383,9 @@ def expected_task_set_payload(missions):
         body += struct.pack(">f", float(m.get("y", 0.0)))
         if ln == 13:
             body += struct.pack(">f", float(m["half_side"]))
+        elif ln == 17:
+            body += struct.pack(">f", float(m.get("fx", 0.0)))
+            body += struct.pack(">f", float(m.get("fy", 0.0)))
         types.append(t)
     out = bytearray([len(types)]) + body
     return {"ok": True, "hex": out.hex(), "len": len(out), "types": types, "error": ""}
@@ -569,13 +595,16 @@ async def cmd_task(client, args):
     return EXIT_OK
 
 
-async def _send_single_mission(client, args, mission, tag):
+async def _send_single_mission(client, args, mission, tag, send_cmd="task_set"):
     """发一帧**单条** `TASK_SET`，先做本地变长布局断言，再可选 `--watch N` 秒采样 pose。
 
     两条路径：
       - 正常：`expected_task_set_payload` 能编出字节 → 断言长度 / count / type / 金标 → 发；
       - 未知 type 探针（如 `--type 9`）：本地编码器按 `Encode_Task_Set` 口径拒编（`ok=False`）
         → 断言 Pictor 的 ack 是 `ok:false` 且 error 明确（"mission type" / "half_side"），即**一帧未发**。
+
+    `send_cmd`：`task_set`（默认，`{cmd:"task_set", missions:[…]}`）或 `guard`
+    （`{cmd:"guard", targets, x, y, fx, fy}`，对应 `ws_command_server._Handle_Guard`；本地仍先按 17 B 复算 + 比金标）。
     """
     t_start = time.monotonic()
     reg_window = min(args.register_timeout, max(1.0, args.timeout * 0.5))
@@ -640,7 +669,7 @@ async def _send_single_mission(client, args, mission, tag):
         bad.append("mission_count=%s（期望 1）" % spec["hex"][0:2])
     if int(spec["hex"][2:4], 16) != type_on_wire:
         bad.append("type 字节=%s（期望 %d）" % (spec["hex"][2:4], type_on_wire))
-    # 金标：三组定值（与 GDScript / Rust 单测同一串）
+    # 金标：定值表（与 GDScript / Rust 单测同一串，task_48 §三）
     golden = None
     mx, my = float(mission.get("x", 0.0)), float(mission.get("y", 0.0))
     if type_on_wire == MISSION_TYPE_FOLLOW and mx == 0.0 and my == 0.0:
@@ -650,24 +679,35 @@ async def _send_single_mission(client, args, mission, tag):
     elif type_on_wire == MISSION_TYPE_CONTAINMENT and mx == 64.0 and my == 64.0 \
             and float(mission.get("half_side", 0.0)) == 8.0:
         golden = CONTAINMENT_GOLDEN_HEX
+    elif type_on_wire == MISSION_TYPE_FACE and mx == 64.0 and my == 64.0:
+        golden = FACE_GOLDEN_HEX
+    elif type_on_wire == MISSION_TYPE_GUARD and mx == 64.0 and my == 64.0 \
+            and float(mission.get("fx", 0.0)) == 64.0 and float(mission.get("fy", 0.0)) == 128.0:
+        golden = GUARD_GOLDEN_HEX
     if golden is not None and spec["hex"] != golden:
         bad.append("金标不符 %s（期望 %s）" % (spec["hex"], golden))
     if bad:
         out["error"] = "本地帧布局断言失败：" + "；".join(bad)
         return fail_json(out, EXIT_FAIL, args.quiet)
 
-    # ④ 发 task_set（missions[0] 就是这台车的点；一帧一车）
+    # ④ 发帧（task_set 一车一帧；guard 走专用入口，两者都只发一帧）
     sent_at = time.time()
     out["sent_at"] = sent_at
-    ack = await client.cmd({"cmd": "task_set", "targets": targets, "missions": [mission]})
+    if send_cmd == "guard":
+        req = {"cmd": "guard", "targets": targets,
+               "x": float(mission["x"]), "y": float(mission["y"]),
+               "fx": float(mission["fx"]), "fy": float(mission["fy"])}
+    else:
+        req = {"cmd": "task_set", "targets": targets, "missions": [mission]}
+    ack = await client.cmd(req)
     out["ack"] = ack.get("ack")
     if not ack.get("ok", False):
         out["ack_ok"] = False
         out["error"] = ack.get("error", "<无 error>")
         return fail_json(out, EXIT_FAIL, args.quiet)
     out["ack_ok"] = True
-    log("[ctl] task_set 已交给 kernel：type=%d payload=%s（%d B；⚠ 不等于车端收到）"
-        % (type_on_wire, spec["hex"], spec["len"]), args.quiet)
+    log("[ctl] %s 已交给 kernel：type=%d payload=%s（%d B；⚠ 不等于车端收到）"
+        % (send_cmd, type_on_wire, spec["hex"], spec["len"]), args.quiet)
 
     # ⑤ --watch：按 pose_hz 采样位姿帧（K3 的轨迹证据；不判定到达）
     samples = 0
@@ -732,6 +772,25 @@ async def cmd_containment(client, args):
         "half_side": float(args.half),
     }
     return await _send_single_mission(client, args, mission, "containment")
+
+
+async def cmd_guard(client, args):
+    """发一帧守卫任务（type=5 Guard：`--x/--y` 值守点 + `--fx/--fy` 注视点），断言 18 B payload 布局。
+
+    金标：`--x 64 --y 64 --fx 64 --fy 128` → `GUARD_GOLDEN_HEX`（18 B）。
+    走 Pictor 的 `guard` 专用入口（`{cmd:"guard", targets, x, y, fx, fy}`），发送前仍按
+    `Encode_Task_Set` 的 17 B 记录复算 payload 并比金标——表错就不发帧。
+    只有 `pleiades-ugv` / `sim/ugv_sim` 是真树（值守 3.0/3.5 m ±30° 迟滞 → 出动 d≤1.2 m → 归位）；
+    机端（`pleiades-uav` / `sim/uav_sim`）naive 一拍 `Success`（task_48 口径 #9）。
+    """
+    mission = {
+        "type": MISSION_TYPE_GUARD,
+        "x": float(args.x),
+        "y": float(args.y),
+        "fx": float(args.fx),
+        "fy": float(args.fy),
+    }
+    return await _send_single_mission(client, args, mission, "guard", send_cmd="guard")
 
 
 # ─── task_44 Step 3：手动两轴（8 B 运动帧）──────────────────────────
@@ -941,7 +1000,7 @@ def build_parser():
     common.add_argument("--port", type=int, default=DEFAULT_PORT, help="Pictor 的 --ws-port（默认 9100）")
     common.add_argument("--host", default=DEFAULT_HOST)
     common.add_argument("--pose-hz", type=float, default=None,
-                        help="pose 降频（默认：follow/containment 为 10，其余为 %g；0 = 不限频）" % DEFAULT_POSE_HZ)
+                        help="pose 降频（默认：follow/containment/guard 为 10，其余为 %g；0 = 不限频）" % DEFAULT_POSE_HZ)
     common.add_argument("--events", default=DEFAULT_EVENTS,
                         help="订阅的事件集，逗号分隔（可用 pose/peer/map_delta/map_full）")
     common.add_argument("--targets", default="", help="按车名/vid 过滤，逗号分隔；空 = 全部")
@@ -1005,6 +1064,20 @@ def build_parser():
     p.add_argument("--register-timeout", type=float, default=DEFAULT_REGISTER_TIMEOUT_S)
     p.set_defaults(func=cmd_containment)
 
+    p = sub.add_parser("guard", parents=[common],
+                       help="发一帧 TASK_SET（type=5 值守：--x/--y 值守点，--fx/--fy 注视点）")
+    p.add_argument("--target", required=True, help="车名或 hex vid")
+    p.add_argument("--x", type=float, required=True, help="值守点 x（世界米）")
+    p.add_argument("--y", type=float, required=True, help="值守点 y（世界米）")
+    p.add_argument("--fx", type=float, required=True, help="注视点 x（世界米；朝向 = atan2(fy−y, fx−x)）")
+    p.add_argument("--fy", type=float, required=True, help="注视点 y（世界米）")
+    p.add_argument("--watch", type=float, default=0.0, help="发完采样 pose 的墙钟秒数（默认 0）")
+    p.add_argument("--mode", default="auto", choices=["none", "auto", "manual"],
+                   help="发之前先切模式（默认 auto）")
+    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
+    p.add_argument("--register-timeout", type=float, default=DEFAULT_REGISTER_TIMEOUT_S)
+    p.set_defaults(func=cmd_guard)
+
     p = sub.add_parser("manual", parents=[common],
                        help="发一帧 8 B 运动帧（task_44：v/omega 两轴；--dry-run 不连车）")
     p.add_argument("--v", type=float, required=True,
@@ -1025,10 +1098,10 @@ def build_parser():
 
 
 def resolve_pose_hz(args):
-    """`--pose-hz` 缺省值按子命令定：follow / containment → 10 Hz（K3 轨迹），其余 → §八 #5 的 2 Hz。"""
+    """`--pose-hz` 缺省值按子命令定：follow / containment / guard → 10 Hz（轨迹证据），其余 → §八 #5 的 2 Hz。"""
     if args.pose_hz is not None:
         return float(args.pose_hz)
-    return FOLLOW_POSE_HZ if args.cmd in ("follow", "containment") else DEFAULT_POSE_HZ
+    return FOLLOW_POSE_HZ if args.cmd in ("follow", "containment", "guard") else DEFAULT_POSE_HZ
 
 
 def build_url(args):

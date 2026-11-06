@@ -2,7 +2,7 @@ extends SceneTree
 
 ## Presented by KeJi
 ## Created Date ： 2026-08-11
-## Modified Date ： 2026-11-01
+## Modified Date ： 2026-11-05
 ##
 ## Orion 协议 v2 编解码 roundtrip 测试（headless）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
@@ -10,8 +10,9 @@ extends SceneTree
 ## Task 21：地图改 log-odds 语义（delta i8 位模式 / clamp / 阈值派生边界）
 ## task_40 Step 4：Follow(type=2) 放开（`_test_follow_task_set`）
 ## task_41 Step 1：Containment(type=3) + TASK_SET **按 type 变长**（0/2 = 9B、3 = 13B），
-##                 ∉{0,2,3} 由 Encode 报错并**返回空数组（不发帧）**，不再降级成 Goto
+##                 ∉{0,2,3,4,5} 由 Encode 报错并**返回空数组（不发帧）**，不再降级成 Goto
 ## task_44 Step 3：msgid 4 改 8B 运动 / 3B 事件、msgid 8 模式帧、WASD 两轴纯函数
+## task_48 Step 4：Face(type=4, 9B) / Guard(type=5, 17B) 金标 + 往返 + 长度表；未知 type 仍拒发
 ##
 ## ⚠️ 入口必须是 `_initialize`（不是 `_init`）：`_init` 阶段 autoload（EventBus）尚未注册，
 ##    `load("res://src/control/input_handler.gd")` 会编译失败（Identifier not found: EventBus）。
@@ -35,6 +36,8 @@ func _initialize() -> void:
 	ok = ok and _test_circle_task_set()
 	ok = ok and _test_follow_task_set()
 	ok = ok and _test_containment_task_set()
+	ok = ok and _test_face_task_set()
+	ok = ok and _test_guard_task_set()
 	ok = ok and _test_assist_request()
 	ok = ok and _test_target_alloc()
 	ok = ok and _test_log_odds_signed()
@@ -710,6 +713,153 @@ func _test_containment_task_set() -> bool:
 		print("FAIL decode half_side=0 accepted"); return false
 
 	print("PASS containment_task_set"); return true
+
+
+# ─── task_48 §三：Face(type=4, 9B) ─────────────────────────────
+
+func _test_face_task_set() -> bool:
+	# ① 常量
+	if ProtocolDef.MISSION_TYPE_FACE != 4:
+		print("FAIL MISSION_TYPE_FACE != 4"); return false
+	# ② 字符串归一化（未知字符串仍 → 0 = Goto，LLM 防御路径不许破）
+	if ProtocolDef.Mission_Type_From("face") != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL mission_type_from face"); return false
+	if ProtocolDef.Mission_Type_From("FACE") != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL mission_type_from FACE case"); return false
+	if ProtocolDef.Mission_Type_From(" face ") != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL mission_type_from face trimmed"); return false
+	if ProtocolDef.Mission_Type_From("guard") != ProtocolDef.MISSION_TYPE_GUARD:
+		print("FAIL mission_type_from guard"); return false
+	if ProtocolDef.Mission_Type_From("unknown") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from unknown must stay Goto"); return false
+	if ProtocolDef.Mission_Type_From("circle") != ProtocolDef.MISSION_TYPE_GOTO:
+		print("FAIL mission_type_from circle must stay Goto"); return false
+	if ProtocolDef.Mission_Type_From(4) != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL mission_type_from int 4 passthrough"); return false
+	# ③ 单条 {4, 64, 64} → 10B，金标 01044280000042800000
+	#    （与 Rust `test_task_set_face_golden`(messages.rs:767-779) / Python 逐字同一串）
+	var pf := OrionMessages.Encode_Task_Set([{"type": 4, "x": 64.0, "y": 64.0}])
+	if pf.size() != 10 or pf[0] != 1:
+		print("FAIL face payload size/count: ", pf.size()); return false
+	if pf[1] != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL face type byte: ", pf[1]); return false
+	if pf.hex_encode() != "01044280000042800000":
+		print("FAIL face golden bytes: ", pf.hex_encode()); return false
+	# ④ 1.0 / 2.0：防「64.0 的位模式巧合」把 x/y 写反
+	var pf2 := OrionMessages.Encode_Task_Set([{"type": 4, "x": 1.0, "y": 2.0}])
+	if pf2.size() != 10:
+		print("FAIL face(1,2) payload size: ", pf2.size()); return false
+	if pf2.hex_encode() != "01043f80000040000000":
+		print("FAIL face(1,2) golden bytes: ", pf2.hex_encode()); return false
+	# ⑤ [Goto(64,64), Face(64,64)] → 19B；[1]=0、[10]=4（口径 #4 的成对下发，顺序不许反）
+	var pfg := OrionMessages.Encode_Task_Set([
+		{"type": 0, "x": 64.0, "y": 64.0},
+		{"type": 4, "x": 64.0, "y": 64.0},
+	])
+	if pfg.size() != 19 or pfg[0] != 2:
+		print("FAIL goto+face payload size/count: ", pfg.size()); return false
+	if pfg[1] != ProtocolDef.MISSION_TYPE_GOTO or pfg[10] != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL goto+face types: ", pfg[1], pfg[10]); return false
+	if pfg.hex_encode() != "02004280000042800000044280000042800000":
+		print("FAIL goto+face golden bytes: ", pfg.hex_encode()); return false
+	# ⑥ 整帧往返（builder → Build_Cmd → Decode_Frame → Decode_Task_Set）
+	var ff := OrionMessages.Build_Cmd(MessageBuilder.build_auto_push_goto_face(64.0, 64.0, 64.0, 64.0))
+	if ff.is_empty():
+		print("FAIL goto+face Build_Cmd empty"); return false
+	var df := OrionFrame.Decode_Frame(ff)
+	if not df.ok:
+		print("FAIL goto+face frame decode: ", df.error); return false
+	var tsd := OrionMessages.Decode_Task_Set(df.payload)
+	if not tsd.ok or tsd.mission_count != 2:
+		print("FAIL goto+face roundtrip: ", tsd); return false
+	var fm: Dictionary = tsd.missions[1]
+	if fm.type != ProtocolDef.MISSION_TYPE_FACE:
+		print("FAIL goto+face roundtrip type: ", fm); return false
+	if absf(fm.x - 64.0) > 0.0001 or absf(fm.y - 64.0) > 0.0001:
+		print("FAIL goto+face roundtrip x/y: ", fm); return false
+	if absf(fm.half_side) > 0.0001:
+		print("FAIL face half_side must be 0.0: ", fm); return false
+	if absf(fm.fx) > 0.0001 or absf(fm.fy) > 0.0001:
+		print("FAIL non-guard fx/fy must be 0.0: ", fm); return false
+	# ⑦ 未知 type（9 / 退役 1）仍整帧拒发（口径 #23：编码侧不降级成 Goto）
+	if not OrionMessages.Encode_Task_Set([{"type": 9, "x": 0.0, "y": 0.0}]).is_empty():
+		print("FAIL unknown type 9 must not encode"); return false
+	if not OrionMessages.Encode_Task_Set([{"type": 1, "x": 0.0, "y": 0.0}]).is_empty():
+		print("FAIL retired circle type 1 must not encode"); return false
+	if not OrionMessages.Build_Cmd(
+			MessageBuilder.build_task_set([{"type": 9, "x": 0.0, "y": 0.0}])).is_empty():
+		print("FAIL unknown type 9 must not build frame"); return false
+	print("PASS face_task_set"); return true
+
+
+# ─── task_48 §三：Guard(type=5, 17B) ───────────────────────────
+
+func _test_guard_task_set() -> bool:
+	# ① 常量
+	if ProtocolDef.MISSION_TYPE_GUARD != 5:
+		print("FAIL MISSION_TYPE_GUARD != 5"); return false
+	# ② 单条 {5, 64, 64, fx=64, fy=128} → 18B，金标 010542800000428000004280000043000000
+	#    （与 Rust `test_task_set_guard_golden`(messages.rs:783-792) / Python 逐字同一串）
+	var pg := OrionMessages.Encode_Task_Set([
+		{"type": 5, "x": 64.0, "y": 64.0, "fx": 64.0, "fy": 128.0},
+	])
+	if pg.size() != 18 or pg[0] != 1:
+		print("FAIL guard payload size/count: ", pg.size()); return false
+	if pg[1] != ProtocolDef.MISSION_TYPE_GUARD:
+		print("FAIL guard type byte: ", pg[1]); return false
+	if pg.slice(10, 14) != PackedByteArray([0x42, 0x80, 0x00, 0x00]):
+		print("FAIL guard fx BE: ", pg.slice(10, 14)); return false
+	if pg.slice(14, 18) != PackedByteArray([0x43, 0x00, 0x00, 0x00]):
+		print("FAIL guard fy BE: ", pg.slice(14, 18)); return false
+	if pg.hex_encode() != "010542800000428000004280000043000000":
+		print("FAIL guard golden bytes: ", pg.hex_encode()); return false
+	# ③ builder 常量直通：build_guard(64, 64, 64, 128)
+	var bg := MessageBuilder.build_guard(64.0, 64.0, 64.0, 128.0)
+	if not bg.has("missions") or (bg["missions"] as Array).size() != 1:
+		print("FAIL build_guard missions: ", bg); return false
+	var gm: Dictionary = (bg["missions"] as Array)[0]
+	if int(gm.type) != ProtocolDef.MISSION_TYPE_GUARD:
+		print("FAIL build_guard type: ", gm); return false
+	if absf(float(gm.fx) - 64.0) > 0.0001 or absf(float(gm.fy) - 128.0) > 0.0001:
+		print("FAIL build_guard fx/fy: ", gm); return false
+	# ④ `build_task_set` 必须**透传** fx/fy（漏了就丢：ws `guard` / `task_set` 通道会把注视点编成 0）
+	var bts := MessageBuilder.build_task_set(
+			[{"type": "guard", "x": 1.0, "y": 2.0, "fx": 3.0, "fy": 4.0}])
+	var tm: Dictionary = (bts["missions"] as Array)[0]
+	if not tm.has("fx") or not tm.has("fy"):
+		print("FAIL build_task_set dropped fx/fy: ", tm); return false
+	var pgt := OrionMessages.Encode_Task_Set(bts["missions"])
+	var gd := OrionMessages.Decode_Task_Set(pgt)
+	if not gd.ok or gd.mission_count != 1:
+		print("FAIL guard build_task_set roundtrip: ", gd); return false
+	var g0: Dictionary = gd.missions[0]
+	if absf(g0.x - 1.0) > 0.0001 or absf(g0.y - 2.0) > 0.0001:
+		print("FAIL guard roundtrip x/y: ", g0); return false
+	if absf(g0.fx - 3.0) > 0.0001 or absf(g0.fy - 4.0) > 0.0001:
+		print("FAIL guard roundtrip fx/fy: ", g0); return false
+	# ⑤ 非 guard 的 fx/fy 恒 0（Goto 往返）
+	var gd2 := OrionMessages.Decode_Task_Set(
+			OrionMessages.Encode_Task_Set([{"type": 0, "x": 1.0, "y": 2.0}]))
+	if not gd2.ok:
+		print("FAIL goto roundtrip: ", gd2); return false
+	if absf(gd2.missions[0].fx) > 0.0001 or absf(gd2.missions[0].fy) > 0.0001:
+		print("FAIL goto fx/fy must be 0.0: ", gd2.missions[0]); return false
+	# ⑥ 长度不符整帧拒（少 1B / 多 1B）—— 口径 #22 的旧端语义
+	var short_g := pg.slice(0, 17)
+	if OrionMessages.Decode_Task_Set(short_g).ok:
+		print("FAIL guard short frame accepted"); return false
+	var tail_g := pg.duplicate()
+	tail_g.append(0)
+	if OrionMessages.Decode_Task_Set(tail_g).ok:
+		print("FAIL guard trailing byte accepted"); return false
+	# ⑦ type=5 缺 fx/fy 时编码器**不报错也不拒**（与 Rust `decode_task_set` 「不做有限性校验」同口径）
+	#    —— 把「B 端缺省 0.0」这个契约固定下来，避免以后误加校验
+	var pz := OrionMessages.Encode_Task_Set([{"type": 5, "x": 1.0, "y": 2.0}])
+	if pz.size() != 18:
+		print("FAIL guard without fx/fy size: ", pz.size()); return false
+	if pz.slice(10, 18) != PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0]):
+		print("FAIL guard without fx/fy must be zeros: ", pz.slice(10, 18)); return false
+	print("PASS guard_task_set"); return true
 
 
 # ─── Task 21：log-odds 语义边界用例 ────────────────────────────

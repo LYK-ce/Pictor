@@ -2,13 +2,14 @@ extends SceneTree
 
 ## Presented by KeJi
 ## Created Date ： 2026-10-30
-## Modified Date ： 2026-10-31
+## Modified Date ： 2026-11-05
 ##
 ## CoopController 纯函数单测（headless，task_41 §5.5.11 / task_43 §七）
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
 ## 覆盖：3 m 环 N 点等角 / N=1;2;8 边界 / N=4 四轴覆盖 / 3 点环（N=3，θ=2π·i/3）/
 ##       排除请求者（请求者不进 targets）/
 ##       两车与四车最近一对一（无重复）/ N! 最优性（2 车 + 3 车）/ N>6 贪心 / 参数不匹配
+##       / 派车帧成对两条（Goto + Face，口径 #4）
 ##
 ## 用 preload 而不是全局类名：新 `class_name` 未进 `.godot/global_script_class_cache.cfg` 时
 ## 也能跑（headless 免 import）。
@@ -304,5 +305,31 @@ func _test_assist_excludes_requester() -> bool:
 		seen.append(p)
 	if seen.size() != 3 or seen[0] == seen[1] or seen[1] == seen[2] or seen[0] == seen[2]:
 		print("FAIL excludes_requester: 目标点重复 ", seen); coop.free(); return false
+	# ⑤ 派车帧**成对两条**（task_48 §2.4 / 口径 #4）：每条都是 [Goto(环点), Face(人)]，
+	#    Face 的 (x, y) = 请求里的 (x, y)（人 / 入侵者世界坐标），且不带 half_side/fx/fy
+	#    （type=4 在字节层只有两个 f32，朝向点用 x/y 键承载）
+	var pair_frames := 0
+	for e in sent:
+		var pair_missions: Array = e[1].missions
+		if pair_missions.size() != 2:
+			print("FAIL excludes_requester: 帧内应为 2 条任务，实际 %d" % pair_missions.size())
+			coop.free(); return false
+		if int(pair_missions[0].type) != ProtocolDef.MISSION_TYPE_GOTO:
+			print("FAIL excludes_requester: missions[0] 应为 Goto ", pair_missions[0])
+			coop.free(); return false
+		var face_m: Dictionary = pair_missions[1]
+		if int(face_m.type) != ProtocolDef.MISSION_TYPE_FACE:
+			print("FAIL excludes_requester: missions[1] 应为 Face ", face_m)
+			coop.free(); return false
+		if face_m.has("half_side") or face_m.has("fx") or face_m.has("fy"):
+			print("FAIL excludes_requester: Face 条目不应带 half_side/fx/fy ", face_m)
+			coop.free(); return false
+		if absf(float(face_m.x) - 64.0) > EPS or absf(float(face_m.y) - 64.0) > EPS:
+			print("FAIL excludes_requester: Face 朝向点应为人的坐标 (64,64) ", face_m)
+			coop.free(); return false
+		pair_frames += 1
+	if pair_frames != 3:
+		print("FAIL excludes_requester: 成对帧数 = %d（应 3）" % pair_frames)
+		coop.free(); return false
 	coop.free()
 	print("PASS assist_excludes_requester"); return true
