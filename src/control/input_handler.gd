@@ -67,8 +67,9 @@ func _input(event: InputEvent) -> void:
 	if key_event.echo:
 		return
 
-	# ⓪ 入口先判焦点（task_48 Step 4.7）：键盘焦点在输入框（LineEdit / 聊天框）时一律不处理，
-	#    否则打 "x" / "w" 会触发随访或运动（旧缺陷）。
+	# ⓪ 入口先判焦点（task_48 Step 4.7，2026-11-06 收窄）：只有**文字输入**控件
+	#    （聊天框 TextEdit / 命令框 LineEdit）持有焦点时才不处理，否则打 "x" / "w" 会触发随访或运动。
+	#    按钮/勾选框持有焦点**不**屏蔽（原来按任何控件都吞键，切手动后驾驶键全失效）。
 	if _Gui_Focus_Taken():
 		return
 
@@ -137,10 +138,17 @@ func _Toggle_Follow() -> void:
 	EventBus.follow_requested.emit(vid)          # UI 侧补一行 detector 提示（见 auto_handler）
 
 
-## 是否有 GUI 控件（LineEdit / 聊天框）持有焦点 —— 有则本帧所有按键都不处理。
+## 是否有**文字输入**控件持有焦点 —— 有则本帧所有按键都不处理。
+## 2026-11-06 热修（现场复现）：原判据是「任何 Control 有焦点就屏蔽」，而切手动时点的
+## `Manual` 是 `CheckButton`（`Button` 默认 `focus_mode = FOCUS_ALL`），点完焦点留在它身上
+## → W/A/S/D 全被吞、一条 8 B 运动帧都发不出去（车端只收到 13 B 模式帧）。
+## 现在只挡 `LineEdit` / `TextEdit`（聊天框、命令框），按钮/勾选框持有焦点不影响驾驶键。
 ## `-s` 单测 / 未入树时 `get_viewport()` 为 null → 视为无焦点（不 panic）。
 func _Gui_Focus_Taken() -> bool:
 	if not is_inside_tree():
 		return false
 	var vp := get_viewport()
-	return vp != null and vp.gui_get_focus_owner() != null
+	if vp == null:
+		return false
+	var focus := vp.gui_get_focus_owner()
+	return focus is LineEdit or focus is TextEdit
