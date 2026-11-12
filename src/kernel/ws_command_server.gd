@@ -11,7 +11,9 @@
 ## 默认上行：`pose` + `peer`，`pose_hz = 2`，按 `targets` 过滤（§八 #5）——10 Hz × N 车直连会变火管。
 ##
 ## 契约（docs/project_code_overview.md §九 有同一份表）：
-##   下行 cmd：`vehicles` / `task_set` / `guard` / `mode` / `manual` / `subscribe`
+##   下行 cmd：`vehicles` / `task_set` / `guard` / `mode` / `manual` / `subscribe` / `formation`
+##   `formation`（task_50 Step 6）：join / leave / list —— 只改 `VehicleRegistry.formations`，
+##   **不发任何帧**（元数据命令；与 `task_set` / `guard` / `mode` / `manual` 不同）。
 ##   上行 event：`vehicles` / `pose` / `peer_connected` / `peer_info` / `peer_disconnected` / `map_delta` / `map_full`
 ##   `{"ack": id, "ok": true}` **只代表"已交给 kernel"**，不代表车端收到（任务文档 §四.5 ⚠️）；
 ##   到达判定只能用上行 pose 的 valid / gx / gy 或 sim 日志。
@@ -41,6 +43,8 @@ const MAP_DELTA_HZ := 1.0
 ## §八 #5：默认只推 pose + peer。
 const DEFAULT_EVENTS := ["pose", "peer"]
 const KNOWN_EVENTS := ["pose", "peer", "map_delta", "map_full"]
+## `formation` 命令的动作（task_50 §7.3）；未知动作一律 `ok:false` 且不改注册表。
+const FORMATION_ACTIONS := ["join", "leave", "list"]
 ## 单帧缓冲上限（`WebSocketPeer` 默认 64 KiB；命令/遥测都是小 JSON，1 MiB 足够）。
 const LINK_BUFFER_BYTES := 1 << 20
 ## 与 Main 下的兄弟节点同名（见 `main.tscn`）：`Main/VehicleRegistry`。
@@ -270,6 +274,8 @@ func _Handle_Command(link: Dictionary, obj: Dictionary) -> void:
 			_Handle_Manual(link, req_id, obj)
 		"subscribe":
 			_Handle_Subscribe(link, req_id, obj)
+		"formation":
+			_Handle_Formation(link, req_id, obj)
 		_:
 			_Send_Ack(link, req_id, false, "unknown cmd: %s" % cmd)
 
@@ -475,6 +481,75 @@ func _Handle_Subscribe(link: Dictionary, req_id: int, obj: Dictionary) -> void:
 	})
 
 
+## `formation`（task_50 Step 6 §7.3）：join / leave / list，只改 `VehicleRegistry.formations`，
+## **绝不发任何帧**（元数据命令）。校验顺序 = action → 注册表 → formation → targets 全解析成功，
+## 全部通过之后才统一写（**原子**：任一 target 解析不到 ⇒ 注册表一字不改）。
+## 应答字段：`action` / `formation` / `targets`（join/leave，解析后的 vid，排序去重）/
+## `members`（变更后快照）/ `formations`（仅 list 无 fid 时，全表）。
+func _Handle_Formation(link: Dictionary, req_id: int, obj: Dictionary) -> void:
+	var raw_action := str(obj.get("action", ""))
+	var action := raw_action.strip_edges().to_lower()
+	if not FORMATION_ACTIONS.has(action):
+		_Send_Ack(link, req_id, false, "unknown action: %s" % raw_action)
+		return
+	var reg := _Get_Registry()
+	if reg == null or not reg.has_method("Get_Formation") \
+			or not reg.has_method("Is_Valid_Formation_Id") \
+			or not reg.has_method("Get_Formation_Members"):
+		_Send_Ack(link, req_id, false, "registry unavailable")
+		return
+	var check := _Formation_Id_Or_Error(reg, obj.get("formation", null))
+	if not bool(check[0]):
+		_Send_Ack(link, req_id, false, str(check[2]))
+		return
+	var fid: String = str(check[1])
+	if action == "join" and fid.is_empty():
+		_Send_Ack(link, req_id, false, "formation 不能为空")
+		return
+	# ── list：纯查询，不需要 targets
+	if action == "list":
+		var extra_list := {"action": action, "formation": fid}
+		if fid.is_empty():
+			extra_list["members"] = _All_Formation_Members(reg)
+			extra_list["formations"] = reg.Get_Formation_Table() \
+				if reg.has_method("Get_Formation_Table") else {}
+		else:
+			extra_list["members"] = _Formation_Members_Array(reg, fid)
+		_Send_Ack(link, req_id, true, "", extra_list)
+		return
+	# ── join / leave：先全部解析成功，再统一写
+	var targets := _String_Array(obj.get("targets", []))
+	if targets.is_empty():
+		_Send_Ack(link, req_id, false, "targets 不能为空")
+		return
+	var vids: Array[String] = []
+	for token: String in targets:
+		var vid := _Resolve_Target(token)
+		if vid.is_empty():
+			_Send_Ack(link, req_id, false, "unknown vehicle: %s" % token)
+			return                  # 注册表不变（一个都没写）
+		if not vids.has(vid):
+			vids.append(vid)
+	vids.sort()
+	for vid: String in vids:
+		if action == "join":
+			reg.Join_Formation(vid, fid)
+		else:
+			reg.Leave_Formation(vid)
+	# members = 变更之后的快照：leave 无 fid → 全编队成员并集；其余 → 该 fid 的成员
+	var members: Array = []
+	if action == "leave" and fid.is_empty():
+		members = _All_Formation_Members(reg)
+	else:
+		members = _Formation_Members_Array(reg, fid)
+	_Send_Ack(link, req_id, true, "", {
+		"action": action,
+		"formation": fid,
+		"targets": vids,
+		"members": members,
+	})
+
+
 # ================================================================ 上行（Pictor → Python）
 
 func _On_Pose_Received(vehicle_id: String, pose: Dictionary) -> void:
@@ -671,7 +746,53 @@ func _Node_Type_Of(vehicle_id: String) -> String:
 	return str((table[vehicle_id] as Dictionary).get("node_type", ""))
 
 
-## 已注册车列表（`{name, vid, node_type}`，按 vid 排序保证确定性）。
+## 车辆当前编队 id（无编队 / 注册表缺编队能力 → ""）；只读，不缓存。
+func _Formation_Of(vehicle_id: String) -> String:
+	var reg := _Get_Registry()
+	if reg == null or not reg.has_method("Get_Formation"):
+		return ""
+	return str(reg.Get_Formation(vehicle_id))
+
+
+## `formation` 字段校验（join / leave / list 共用**一处口径**）：
+## 缺省 / 空白 → `[true, "", ""]`（是否必填由调用方按 action 决定）；合法 → `[true, 归一值, ""]`；
+## 非法 → `[false, "", "bad formation id: <原值>"]`（字符集/长度由注册表唯一裁决）。
+func _Formation_Id_Or_Error(reg: Node, raw: Variant) -> Array:
+	if raw == null:
+		return [true, "", ""]
+	var text := str(raw).strip_edges()
+	if text.is_empty():
+		return [true, "", ""]
+	if not bool(reg.Is_Valid_Formation_Id(text)):
+		return [false, "", "bad formation id: %s" % str(raw)]
+	return [true, text, ""]
+
+
+## 某编队成员（排序后的 plain Array，便于 JSON 输出与断言）；fid 空 → []。
+func _Formation_Members_Array(reg: Node, fid: String) -> Array:
+	var out: Array = []
+	if fid.is_empty():
+		return out
+	for vid in reg.Get_Formation_Members(fid):
+		out.append(str(vid))
+	out.sort()
+	return out
+
+
+## 全编队成员并集（排序去重）；`leave` 未指定 fid 时的 members 回执用。
+func _All_Formation_Members(reg: Node) -> Array:
+	var seen := {}
+	if reg.has_method("Get_Formation_Table"):
+		var table: Dictionary = reg.Get_Formation_Table()
+		for fid in table:
+			for vid in (table[fid] as Array):
+				seen[str(vid)] = true
+	var out: Array = seen.keys()
+	out.sort()
+	return out
+
+
+## 已注册车列表（`{name, vid, node_type, formation}`，按 vid 排序保证确定性）。
 func _Vehicle_List() -> Array:
 	var out: Array = []
 	var reg := _Get_Registry()
@@ -686,6 +807,7 @@ func _Vehicle_List() -> Array:
 			"name": str(v.get("name", "")),
 			"vid": vid,
 			"node_type": str(v.get("node_type", "")),
+			"formation": _Formation_Of(vid),
 		})
 	return out
 

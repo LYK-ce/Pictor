@@ -4,7 +4,7 @@ extends SceneTree
 ## Modified Date ： 2026-10-29
 ##
 ## WsCommandServer 自检（task_40 Step 3）：真 TCPServer + 真 WebSocketPeer 客户端 + 真 VehicleRegistry。
-## 覆盖 `src/kernel/ws_command_server.gd` 的对外契约（下行 4 条命令 / 上行事件 / 订阅降频过滤 /
+## 覆盖 `src/kernel/ws_command_server.gd` 的对外契约（下行命令 / 上行事件 / 订阅降频过滤 /
 ## 断连重连 / Stop 复监听），A7/A8 直接捕获 `EventBus.cmd_send` 判定"发了什么帧"。
 ##
 ## 用法（`--fixed-fps 60` 让 60 帧 = 引擎时间 1.0 s，降频断言才可复现）：
@@ -20,7 +20,8 @@ extends SceneTree
 ##   - TCPServer + accept_stream 在 `--headless` 下完整可用（`orion-simulation-world/src/tests/
 ##     check_ws_manager.gd` 的 P1/P6 同结论）。
 ##
-## 断言编号与 tmp/task40/plan.md §4 P3 的 A1~A14 一一对应。
+## 断言编号与 tmp/task40/plan.md §4 P3 的 A1~A14 一一对应；A15~A18 为 task_50 Step 6 的
+## `formation` 命令（join / leave / list + 错误路径原子性）。合计 total=18。
 
 const SERVER_SCRIPT := "res://src/kernel/ws_command_server.gd"
 const REGISTRY_SCRIPT := "res://src/vehicle_registry/vehicle_registry.gd"
@@ -156,19 +157,20 @@ func _run() -> void:
 		"ok=%s error=%s sent=%d(期望 %d)" % [str(ack.get("ok", "<none>")), ack_err,
 			_cmd_log.size(), before])
 
-	# ── A9 mode：auto → MANUAL_CONTROL(4) / action 9；非法 to → ok:false
+	# ── A9 mode：auto → msgid 8 + mode 1（task_44 `766e35e` 起不再走 msgid 4 的 action 8/9）；
+	#    非法 to → ok:false 且一帧不发
 	_cmd_log.clear()
 	msgs = await _Request({"id": 5, "cmd": "mode", "targets": [NAME_A], "to": "auto"})
 	ack = _Find_Ack(msgs, 5)
 	var mode_cmd: Dictionary = (_cmd_log[0].get("cmd", {}) if not _cmd_log.is_empty() else {})
-	var mode_ok: bool = ack.get("ok", false) == true and int(mode_cmd.get("msgid", -1)) == 4 \
-		and int(mode_cmd.get("action", -1)) == 9
+	var mode_ok: bool = ack.get("ok", false) == true and int(mode_cmd.get("msgid", -1)) == 8 \
+		and int(mode_cmd.get("mode", -1)) == 1
 	var sent_before := _cmd_log.size()
 	msgs = await _Request({"id": 6, "cmd": "mode", "targets": [NAME_A], "to": "bogus"})
 	var ack_bad: Dictionary = _Find_Ack(msgs, 6)
 	_check("A9 mode-frames", mode_ok and ack_bad.get("ok", true) == false and _cmd_log.size() == sent_before,
-		"msgid=%s action=%s bad_ok=%s bad_err=%s" % [str(mode_cmd.get("msgid", "<none>")),
-			str(mode_cmd.get("action", "<none>")), str(ack_bad.get("ok", "<none>")),
+		"msgid=%s mode=%s bad_ok=%s bad_err=%s" % [str(mode_cmd.get("msgid", "<none>")),
+			str(mode_cmd.get("mode", "<none>")), str(ack_bad.get("ok", "<none>")),
 			str(ack_bad.get("error", ""))])
 
 	# ── A10 订阅 pose_hz=2 + targets 过滤：60 帧（1.0 s）只该 2~3 帧，且只含 VID_A
@@ -221,6 +223,104 @@ func _run() -> void:
 		and (re_veh.get("list", []) as Array).size() == 2,
 		"drained=%s reopen=%s ack=%s count=%d" % [drained, reopen, str(ack.get("ok", "<none>")),
 			(re_veh.get("list", []) as Array).size()])
+
+	# ── A15 formation join：ack 带 action/formation/targets/members；一帧不发；
+	#    随后 vehicles 事件里该行带 formation（task_50 Step 6 §7.5 判据 5）
+	_cmd_log.clear()
+	msgs = await _Request({"id": 10, "cmd": "formation", "action": "join",
+		"targets": [NAME_A], "formation": "containment"})
+	ack = _Find_Ack(msgs, 10)
+	var join_targets := _Str_Array(ack.get("targets", []))
+	var join_members := _Str_Array(ack.get("members", []))
+	var join_clean := _cmd_log.is_empty()
+	msgs = await _Request({"id": 20, "cmd": "vehicles"})
+	var veh_a := _Find_Vehicle_Row(msgs, VID_A)
+	_check("A15 formation-join",
+		ack.get("ok", false) == true and str(ack.get("action", "")) == "join"
+		and str(ack.get("formation", "")) == "containment"
+		and _eq_str(join_targets, [VID_A]) and _eq_str(join_members, [VID_A])
+		and join_clean and str(veh_a.get("formation", "<none>")) == "containment",
+		"ack=%s targets=%s members=%s sent=%d formation=%s" % [_brief(ack),
+			str(join_targets), str(join_members), _cmd_log.size(),
+			str(veh_a.get("formation", "<none>"))])
+
+	# ── A16 formation leave：无条件移出当前编队；formation 只回显不当过滤器；一帧不发
+	msgs = await _Request({"id": 21, "cmd": "formation", "action": "join",
+		"targets": [NAME_B], "formation": "containment"})
+	var ack_join_b := _Find_Ack(msgs, 21)
+	_cmd_log.clear()
+	msgs = await _Request({"id": 11, "cmd": "formation", "action": "leave", "targets": [NAME_A]})
+	ack = _Find_Ack(msgs, 11)
+	var leave_members := _Str_Array(ack.get("members", []))
+	var leave_clean := _cmd_log.is_empty()
+	var reg_a_after: String = str(_registry.Get_Formation(VID_A))
+	msgs = await _Request({"id": 22, "cmd": "vehicles"})
+	var veh_a2 := _Find_Vehicle_Row(msgs, VID_A)
+	_check("A16 formation-leave",
+		ack_join_b.get("ok", false) == true
+		and ack.get("ok", false) == true and str(ack.get("action", "")) == "leave"
+		and _eq_str(leave_members, [VID_B]) and reg_a_after == ""
+		and leave_clean and str(veh_a2.get("formation", "<none>")) == "",
+		"ack=%s members=%s sent=%d veh_formation=%s" % [_brief(ack), str(leave_members),
+			_cmd_log.size(), str(veh_a2.get("formation", "<none>"))])
+
+	# ── A17 formation list：单编队 + 全量（formations 表），都一帧不发
+	_cmd_log.clear()
+	msgs = await _Request({"id": 12, "cmd": "formation", "action": "list", "formation": "containment"})
+	var ack_one := _Find_Ack(msgs, 12)
+	msgs = await _Request({"id": 13, "cmd": "formation", "action": "list"})
+	var ack_all := _Find_Ack(msgs, 13)
+	var one_members := _Str_Array(ack_one.get("members", []))
+	var all_members := _Str_Array(ack_all.get("members", []))
+	var all_formations: Dictionary = ack_all.get("formations", {})
+	var containment_row := _Str_Array(all_formations.get("containment", []))
+	_check("A17 formation-list",
+		ack_one.get("ok", false) == true and str(ack_one.get("formation", "")) == "containment"
+		and _eq_str(one_members, [VID_B])
+		and ack_all.get("ok", false) == true and str(ack_all.get("formation", "")) == ""
+		and _eq_str(all_members, [VID_B]) and _eq_str(containment_row, [VID_B])
+		and _cmd_log.is_empty(),
+		"one=%s one_members=%s all=%s formations=%s" % [_brief(ack_one), str(one_members),
+			_brief(ack_all), _brief(all_formations)])
+
+	# ── A18 formation 错误路径：未知 vid / 空 formation / 未知 action / 非法 id 都 ok:false
+	#    且注册表不变、一帧不发；leave 带「语法合法但无人使用」的 fid **不是错误**
+	var snap := _Str_Array(_registry.Get_Formation_Members("containment"))
+	_cmd_log.clear()
+	msgs = await _Request({"id": 14, "cmd": "formation", "action": "join",
+		"targets": ["ghost"], "formation": "containment"})
+	var a18_unknown := _Find_Ack(msgs, 14)
+	msgs = await _Request({"id": 15, "cmd": "formation", "action": "join",
+		"targets": [NAME_A], "formation": ""})
+	var a18_empty := _Find_Ack(msgs, 15)
+	msgs = await _Request({"id": 16, "cmd": "formation", "action": "bogus",
+		"targets": [NAME_A], "formation": "containment"})
+	var a18_action := _Find_Ack(msgs, 16)
+	msgs = await _Request({"id": 17, "cmd": "formation", "action": "join",
+		"targets": [NAME_A], "formation": "Containment"})
+	var a18_badfid := _Find_Ack(msgs, 17)
+	var snap_unchanged := _eq_str(_Str_Array(_registry.Get_Formation_Members("containment")), snap)
+	var a18_clean := _cmd_log.is_empty()
+	msgs = await _Request({"id": 18, "cmd": "formation", "action": "leave",
+		"targets": [NAME_A], "formation": "nobody"})
+	var a18_leave := _Find_Ack(msgs, 18)
+	var leave_members_nobody := _Str_Array(a18_leave.get("members", []))
+	var still_b := _eq_str(_Str_Array(_registry.Get_Formation_Members("containment")), [VID_B])
+	_check("A18 formation-errors",
+		a18_unknown.get("ok", true) == false
+		and str(a18_unknown.get("error", "")).contains("unknown vehicle: ghost")
+		and a18_empty.get("ok", true) == false
+		and str(a18_empty.get("error", "")) == "formation 不能为空"
+		and a18_action.get("ok", true) == false
+		and str(a18_action.get("error", "")).contains("unknown action: bogus")
+		and a18_badfid.get("ok", true) == false
+		and str(a18_badfid.get("error", "")).contains("bad formation id: Containment")
+		and snap_unchanged and a18_clean
+		and a18_leave.get("ok", false) == true and leave_members_nobody.is_empty() and still_b,
+		"unknown=%s empty=%s action=%s badfid=%s snap=%s sent_clean=%s leave=%s still_b=%s"
+		% [str(a18_unknown.get("error", "")), str(a18_empty.get("error", "")),
+			str(a18_action.get("error", "")), str(a18_badfid.get("error", "")),
+			str(snap_unchanged), str(a18_clean), _brief(a18_leave), str(still_b)])
 
 	# ── A14 Stop → 端口释放且可被再监听
 	_Client_Close()
@@ -349,6 +449,34 @@ func _Find_Event(msgs: Array, event_name: String) -> Dictionary:
 		if str(msg.get("event", "")) == event_name:
 			return msg
 	return {}
+
+
+## `vehicles` 事件里某 vid 的行（A15/A16 判据 5 用）；没有 → {}。
+func _Find_Vehicle_Row(msgs: Array, vid: String) -> Dictionary:
+	var veh := _Find_Event(msgs, "vehicles")
+	for item: Dictionary in veh.get("list", []):
+		if str(item.get("vid", "")) == vid:
+			return item
+	return {}
+
+
+## 转 plain `Array`（注册表的 `Array[String]` / JSON 的 Array 都能吃）。
+func _Str_Array(value: Variant) -> Array:
+	var out: Array = []
+	if value is Array:
+		for item: Variant in value:
+			out.append(str(item))
+	return out
+
+
+## 字符串数组逐元素比较（不依赖 TypedArray == Array 的细节）。
+func _eq_str(arr: Array, want: Array) -> bool:
+	if arr.size() != want.size():
+		return false
+	for i in range(want.size()):
+		if str(arr[i]) != str(want[i]):
+			return false
+	return true
 
 
 func _On_Cmd_Send(targets: Array[String], cmd: Dictionary) -> void:

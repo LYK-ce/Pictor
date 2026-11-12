@@ -24,6 +24,10 @@
 #   python3 Pictor/tool/pictor_ws_ctl.py monitor [--seconds 10] [--pose-hz 2] [--events pose,peer]
 #   python3 Pictor/tool/pictor_ws_ctl.py manual --v 0.45 --omega 0.5 --dry-run [--json]
 #   python3 Pictor/tool/pictor_ws_ctl.py manual --v 0.45 --omega 0.5 --targets ugv_1   # 真发一帧
+#   python3 Pictor/tool/pictor_ws_ctl.py formation --target ugv_1 --join containment [--json]
+#   python3 Pictor/tool/pictor_ws_ctl.py formation --target ugv_1 --leave [--json]
+#   python3 Pictor/tool/pictor_ws_ctl.py formation --list [containment] [--json]
+#   python3 Pictor/tool/pictor_ws_ctl.py formation --target ugv_1 --join containment --dry-run --json
 #
 # `follow` 走 type=2（仅 WS 入口；`x`/`y` 在 Follow 语义下预留填 0）；
 # `containment` 走 type=3（`--cx/--cy` = 正方形中心、`--half` = 半边长 m，task_41 §3.2）；
@@ -33,6 +37,11 @@
 # `guard` 有自己的子命令（`--x/--y` = 值守点、`--fx/--fy` = 注视点，走 Pictor 的 `guard` 专用入口
 # `{cmd:"guard", targets, x, y, fx, fy}`，与 `ws_command_server._Handle_Guard` 同口径）。
 #
+# `formation`（task_50 Step 6）是**元数据命令**：Pictor 只改 `VehicleRegistry.formations`，
+# **不发任何帧**（与 task/guard/manual 不同）；`--join`/`--leave`/`--list` 三选一，
+# `--dry-run` 只打印将发送的报文、不连 Pictor（判据 3 的最小证据）。
+# formation id 口径与 GDScript `VehicleRegistry.Is_Valid_Formation_Id` 一致：[a-z0-9_-]{1,32}。
+#
 # 退出码：0 = 断言通过；1 = 断言失败；2 = 环境错误（连不上 / 无 websockets / 参数非法）。
 #
 # 依赖：`websockets`（见同目录 requirements.txt；本机 15.0.1）+ 标准库。
@@ -41,6 +50,7 @@ import argparse
 import asyncio
 import json
 import math
+import re
 import struct
 import sys
 import time
@@ -69,6 +79,11 @@ PING_INTERVAL_S = 10.0
 FINAL_ERR_GATE_M = 2.0
 
 KNOWN_EVENTS = ("pose", "peer", "map_delta", "map_full")
+
+# ─── 编队 id（task_50 Step 6）：与 `VehicleRegistry.Is_Valid_Formation_Id` 同口径 ─────
+# strip() 后非空、长度 ≤ 32、字符集 [a-z0-9_-]（**不折大小写**；大写一律非法）。
+FORMATION_ID_MAX_LEN = 32
+FORMATION_ID_RE = re.compile(r"^[a-z0-9_-]{1,%d}$" % FORMATION_ID_MAX_LEN)
 
 # ─── mission type（task_41 Step 1 起：变长记录 {0,2,3}；与 `ProtocolDef` 同一套约定）─────
 # TASK_SET 记录按 type 变长（task_48 §三）：0/2/4 = 9 B、3 = 13 B、5 = 17 B。Pictor 的
@@ -252,6 +267,25 @@ def parse_csv(text):
     if text is None:
         return []
     return [x.strip() for x in str(text).split(",") if x.strip()]
+
+
+def as_target_list(raw):
+    """`--targets`（csv 串，主流程里已 parse 成 list）与 `--target`（append list）的统一入口。"""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    return parse_csv(raw)
+
+
+def formation_id_error(fid):
+    """formation id 校验；合法 → ""，否则错误串（与 `Is_Valid_Formation_Id` 同口径）。"""
+    text = str(fid).strip()
+    if not text:
+        return "formation 不能为空"
+    if not FORMATION_ID_RE.match(text):
+        return "bad formation id: %s" % text
+    return ""
 
 
 def parse_float_list(text):
@@ -994,6 +1028,96 @@ async def cmd_monitor(client, args):
 # ================================================================ CLI
 
 
+# ─── task_50 Step 6：编队元数据命令（join / leave / list；Pictor 不发帧）─────
+
+
+def formation_targets(args):
+    """`--targets`(csv) + `--target`(append) 合并：去空、保序、去重。"""
+    merged = as_target_list(getattr(args, "targets", "")) + as_target_list(getattr(args, "target", None))
+    out = []
+    for token in merged:
+        if token not in out:
+            out.append(token)
+    return out
+
+
+def formation_request_body(args):
+    """按 argparse 结果拼 `{cmd:"formation", ...}`；返回 (body, error)。
+
+    校验口径与 Pictor `_Handle_Formation` 一致（本地先挡，绝不发半条命令）：
+    join 必须有合法 formation + 非空 targets；leave 只要非空 targets；list 的 fid 可省略。
+    """
+    targets = formation_targets(args)
+    if args.join_fid is not None:
+        fid = str(args.join_fid).strip()
+        err = formation_id_error(fid)
+        if err:
+            return None, err
+        if not targets:
+            return None, "formation join 需要 --target/--targets（targets 不能为空）"
+        return {"cmd": "formation", "action": "join", "targets": targets, "formation": fid}, ""
+    if args.leave:
+        if not targets:
+            return None, "formation leave 需要 --target/--targets（targets 不能为空）"
+        return {"cmd": "formation", "action": "leave", "targets": targets}, ""
+    fid = "" if args.list_fid is None else str(args.list_fid).strip()
+    if fid:
+        err = formation_id_error(fid)
+        if err:
+            return None, err
+    return {"cmd": "formation", "action": "list", "formation": fid}, ""
+
+
+async def cmd_formation(client, args):
+    """发一条 formation 命令（元数据），按 ack 回显 members / formations。"""
+    body, err = formation_request_body(args)
+    if err:
+        return fail_json({"ok": False, "cmd": "formation", "error": err}, EXIT_ENV, args.quiet)
+    ack = await client.cmd(body, args.timeout)
+    out = {
+        "ok": bool(ack.get("ok", False)),
+        "cmd": "formation",
+        "action": str(ack.get("action", body.get("action", ""))),
+        "formation": str(ack.get("formation", body.get("formation", ""))),
+        "members": ack.get("members", []),
+        "ack": ack.get("ack"),
+    }
+    if "targets" in ack:
+        out["targets"] = ack.get("targets", [])
+    if "formations" in ack:
+        out["formations"] = ack.get("formations", {})
+    if not out["ok"]:
+        out["error"] = ack.get("error", "<无 error>")
+        return fail_json(out, EXIT_FAIL, args.quiet)
+    log("[ctl] formation %s ok：formation=%s members=%s"
+        % (out["action"], out["formation"], out["members"]), args.quiet)
+    if args.json:
+        emit_json(out)
+    return EXIT_OK
+
+
+def cmd_formation_dry_run(args):
+    """不连 Pictor：只按同一口径拼报文并回显（判据 3 的最小证据）。"""
+    body, err = formation_request_body(args)
+    if err:
+        return fail_json({"ok": False, "dry_run": True, "cmd": "formation", "error": err},
+                         EXIT_ENV, args.quiet)
+    out = {
+        "ok": True,
+        "dry_run": True,
+        "cmd": body["cmd"],
+        "action": body["action"],
+        "formation": body.get("formation", ""),
+        "targets": body.get("targets", []),
+    }
+    if args.json:
+        emit_json(out)
+    else:
+        log("[ctl] dry-run：formation %s formation=%r targets=%s（不连 Pictor）"
+            % (out["action"], out["formation"], out["targets"]), args.quiet)
+    return EXIT_OK
+
+
 def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--url", default=None, help="完整 WS 地址（给了就不看 --port）")
@@ -1094,6 +1218,22 @@ def build_parser():
     p = sub.add_parser("monitor", parents=[common], help="订阅并统计事件（判据 4 用）")
     p.add_argument("--seconds", type=float, default=10.0)
     p.set_defaults(func=cmd_monitor)
+
+    p = sub.add_parser("formation", parents=[common],
+                       help="编队元数据命令（task_50 Step 6）：join / leave / list，Pictor 不发帧")
+    act = p.add_mutually_exclusive_group(required=True)
+    act.add_argument("--join", dest="join_fid", metavar="FID",
+                     help="把 --target/--targets 加入编队 FID（覆盖旧编队）")
+    act.add_argument("--leave", action="store_true",
+                     help="把 --target/--targets 移出当前编队（幂等）")
+    act.add_argument("--list", dest="list_fid", nargs="?", const="", metavar="FID",
+                     help="列出单编队成员；不带 FID = 列出全部编队")
+    p.add_argument("--target", action="append", default=[],
+                   help="车名或 hex vid（可重复；与 --targets 合并）")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                   help="只打印将发送的报文，不连 Pictor")
+    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
+    p.set_defaults(func=cmd_formation)
     return ap
 
 
@@ -1113,9 +1253,13 @@ def build_url(args):
 def main(argv=None):
     ap = build_parser()
     args = ap.parse_args(argv)
-    # --dry-run 短路：只拼帧 + 断言金标，不连 Pictor、不进 asyncio（判据 4 的 dry-run 级证据）
+    # --dry-run 短路：只拼帧 / 报文 + 断言金标，不连 Pictor、不进 asyncio
+    # （manual 的判据 4、formation 的判据 3 的最小证据）
     if getattr(args, "dry_run", False):
-        return cmd_manual_dry_run(args)
+        if args.cmd == "manual":
+            return cmd_manual_dry_run(args)
+        if args.cmd == "formation":
+            return cmd_formation_dry_run(args)
     args.targets = parse_csv(args.targets)
     args.pose_hz = resolve_pose_hz(args)
     url = build_url(args)

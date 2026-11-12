@@ -8,6 +8,8 @@ extends SceneTree
 ## 用法: godot --headless --path <项目> -s <本脚本路径>
 ## 覆盖：3 m 环 N 点等角 / N=1;2;8 边界 / N=4 四轴覆盖 / 3 点环（N=3，θ=2π·i/3）/
 ##       排除请求者（请求者不进 targets）/
+##       containment 编队过滤（12 车 → 4 帧）/ 0 成员 → 0 帧 / 成员缺位姿 → N=3 /
+##       请求者在编队 → N=3 / 非成员 0 帧 /
 ##       两车与四车最近一对一（无重复）/ N! 最优性（2 车 + 3 车）/ N>6 贪心 / 参数不匹配
 ##       / 派车帧成对两条（Goto + Face，口径 #4）
 ##
@@ -22,9 +24,15 @@ const EPS := 1e-4
 const HEX_PREFIX := "002408011220"
 
 
-## 假注册表（只提供 `vehicles` 字典；`-s` 模式没有真 VehicleRegistry 节点）
+## 假注册表（只提供 `vehicles` + 编队查询；`-s` 模式没有真 VehicleRegistry 节点）
+## `formations` / `Get_Formation` 与真注册表同语义（task_50 Step 6 §7.2）：
+## 没有编队的 vid → ""；Coop 的 `_formation_cars()` 靠它过滤。
 class FakeRegistry extends RefCounted:
 	var vehicles: Dictionary = {}
+	var formations: Dictionary = {}
+
+	func Get_Formation(vehicle_id: String) -> String:
+		return str(formations.get(vehicle_id, ""))
 
 
 ## 假 EventBus（只提供 `cmd_send` 信号；`-s` 模式没有 autoload）
@@ -44,6 +52,11 @@ func _init() -> void:
 	ok = ok and _test_assign_bruteforce_optimal()
 	ok = ok and _test_assign_greedy_large()
 	ok = ok and _test_assign_size_mismatch()
+	ok = ok and _test_assist_containment_only()
+	ok = ok and _test_assist_zero_members()
+	ok = ok and _test_assist_member_without_pose()
+	ok = ok and _test_assist_requester_in_formation()
+	ok = ok and _test_assist_other_formation_untouched()
 	print("=== ALL PASS: ", ok, " ===")
 	quit(0 if ok else 1)
 
@@ -266,6 +279,9 @@ func _test_assist_excludes_requester() -> bool:
 	reg.vehicles[others[0]] = {"name": "c2", "x": 60.0, "y": 64.0, "yaw": 0.0, "node_type": "car"}
 	reg.vehicles[others[1]] = {"name": "c3", "x": 68.0, "y": 64.0, "yaw": 0.0, "node_type": "car"}
 	reg.vehicles[others[2]] = {"name": "c4", "x": 64.0, "y": 68.0, "yaw": 0.0, "node_type": "car"}
+	# task_50 Step 6：前提改成 4 台都在 `containment` 编队（候选集已从「全员在线车」改为编队成员）
+	for vid: String in [requester, others[0], others[1], others[2]]:
+		reg.formations[vid] = "containment"
 	var bus := FakeBus.new()
 	var sent: Array = []
 	bus.cmd_send.connect(func(t, c): sent.append([t, c]))
@@ -333,3 +349,210 @@ func _test_assist_excludes_requester() -> bool:
 		coop.free(); return false
 	coop.free()
 	print("PASS assist_excludes_requester"); return true
+
+
+# ─── task_50 Step 6：assist 只发给 `containment` 编队 ────────────────────
+
+
+## 造一支「车墙 + 围控」车队：返回 `{reg, wall, contain}`（vid 数组，均已注册为 car 且位姿非 0）。
+## wall 车坐标在 (20..48, 80/84)，containment 车坐标在 (60/68, 60/68)，互不重叠。
+func _make_fleet(wall_n: int, contain_n: int) -> Dictionary:
+	var reg := FakeRegistry.new()
+	var wall: Array = []
+	var contain: Array = []
+	for i in range(wall_n):
+		var vid := HEX_PREFIX + "b%03d" % i
+		reg.vehicles[vid] = {
+			"name": "wall_%d" % i,
+			"x": 20.0 + float(i) * 4.0,
+			"y": 80.0 + float(i % 2) * 4.0,
+			"yaw": 0.0,
+			"node_type": "car",
+		}
+		reg.formations[vid] = "wall"
+		wall.append(vid)
+	for j in range(contain_n):
+		var vid := HEX_PREFIX + "c%03d" % j
+		reg.vehicles[vid] = {
+			"name": "contain_%d" % j,
+			"x": 60.0 + float(j % 2) * 8.0,
+			"y": 60.0 + float(j >> 1) * 8.0,
+			"yaw": 0.0,
+			"node_type": "car",
+		}
+		reg.formations[vid] = "containment"
+		contain.append(vid)
+	return {"reg": reg, "wall": wall, "contain": contain}
+
+
+## 跑一次 assist（请求者默认是场外 UAV），返回捕获到的 cmd_send 列表 [[targets, cmd], ...]。
+func _run_assist(reg, requester: String, center := Vector2(64.0, 64.0)) -> Array:
+	var bus := FakeBus.new()
+	var sent: Array = []
+	bus.cmd_send.connect(func(t, c): sent.append([t, c]))
+	var coop = Coop.new()          # 不 add_child：避免 _ready 里解析 EventBus（-s 模式无 autoload）
+	coop._registry = reg
+	coop._bus = bus
+	coop._on_assist_request(requester, center.x, center.y)
+	coop.free()
+	return sent
+
+
+## 每条派车帧必须是 [Goto(环点), Face(人)] 成对两条（口径 #4）。
+func _is_goto_face_pair(entry: Array) -> bool:
+	var missions: Array = entry[1].missions
+	if missions.size() != 2:
+		return false
+	if int(missions[0].type) != ProtocolDef.MISSION_TYPE_GOTO:
+		return false
+	if int(missions[1].type) != ProtocolDef.MISSION_TYPE_FACE:
+		return false
+	return true
+
+
+## 编队状态签名（排序后的 "vid=fid" 串）：Coop 是只读的，前后必须完全一致。
+func _formations_signature(reg) -> String:
+	var items: Array = []
+	for vid in reg.formations:
+		items.append("%s=%s" % [str(vid), str(reg.formations[vid])])
+	items.sort()
+	return "|".join(items)
+
+
+## ⑪ 12 车（8 wall + 4 containment），请求者 = 场外 UAV：
+##    **恰好 4 帧**、每帧 targets 恰 1 台且都是成员、8 台 wall 0 帧、Goto 落在 ring_points(4)、Face = 人坐标。
+func _test_assist_containment_only() -> bool:
+	var fleet := _make_fleet(8, 4)
+	var reg = fleet["reg"]
+	var contain: Array = fleet["contain"]
+	var wall: Array = fleet["wall"]
+	var requester := HEX_PREFIX + "9f"          # 场外 UAV：不在 vehicles 表里
+	var center := Vector2(64.0, 64.0)
+	var sent := _run_assist(reg, requester, center)
+	if sent.size() != 4:
+		print("FAIL assist_containment_only: sent=%d（应 4）" % sent.size()); return false
+	var ring := Coop.ring_points(center, 4)
+	var seen := {}
+	for e: Array in sent:
+		var targets: Array = e[0]
+		if targets.size() != 1:
+			print("FAIL assist_containment_only: 每帧应恰 1 台 targets=", targets); return false
+		var vid := str(targets[0])
+		if not contain.has(vid):
+			print("FAIL assist_containment_only: 非 containment 成员收到派发 ", vid); return false
+		if wall.has(vid):
+			print("FAIL assist_containment_only: wall 车收到派发 ", vid); return false
+		if seen.has(vid):
+			print("FAIL assist_containment_only: 同一台车收到多帧 ", vid); return false
+		seen[vid] = true
+		if not _is_goto_face_pair(e):
+			print("FAIL assist_containment_only: 帧不是 [Goto,Face] ", e[1]); return false
+		var m: Dictionary = e[1].missions[0]
+		var p := Vector2(float(m.x), float(m.y))
+		if absf(p.distance_to(center) - 3.0) > EPS:
+			print("FAIL assist_containment_only: Goto 不在 3 m 环上 ", p); return false
+		var hit := false
+		for r: Vector2 in ring:
+			if _approx(p, r):
+				hit = true
+		if not hit:
+			print("FAIL assist_containment_only: Goto 不在 ring_points(4) 上 ", p); return false
+		var face: Dictionary = e[1].missions[1]
+		if absf(float(face.x) - 64.0) > EPS or absf(float(face.y) - 64.0) > EPS:
+			print("FAIL assist_containment_only: Face 应为人的坐标 (64,64) ", face); return false
+	if seen.size() != 4:
+		print("FAIL assist_containment_only: 4 名成员未恰好覆盖 ", seen.keys()); return false
+	print("PASS assist_containment_only"); return true
+
+
+## ⑫ 12 车全在 `wall`（0 成员）：**0 帧**，且早退（不进 assign_one_to_one）。
+##    （早退的文本证据：本用例会打印 `编队=containment 无在线成员 → 忽略`，见测试日志。）
+func _test_assist_zero_members() -> bool:
+	var fleet := _make_fleet(12, 0)
+	var sent := _run_assist(fleet["reg"], HEX_PREFIX + "9f")
+	if not sent.is_empty():
+		print("FAIL assist_zero_members: sent=%d（应 0）" % sent.size()); return false
+	print("PASS assist_zero_members"); return true
+
+
+## ⑬ 4 名成员中 1 台 `x=y=0`（无位姿）：N=3、3 帧、缺位姿那台 0 帧、环点按 3 重算。
+func _test_assist_member_without_pose() -> bool:
+	var fleet := _make_fleet(0, 4)
+	var reg = fleet["reg"]
+	var contain: Array = fleet["contain"]
+	var missing := str(contain[3])
+	reg.vehicles[missing]["x"] = 0.0
+	reg.vehicles[missing]["y"] = 0.0
+	var center := Vector2(64.0, 64.0)
+	var sent := _run_assist(reg, HEX_PREFIX + "9f", center)
+	if sent.size() != 3:
+		print("FAIL assist_member_without_pose: sent=%d（应 3）" % sent.size()); return false
+	var ring := Coop.ring_points(center, 3)
+	var seen := {}
+	for e: Array in sent:
+		var targets: Array = e[0]
+		if targets.size() != 1:
+			print("FAIL assist_member_without_pose: 每帧应恰 1 台 targets=", targets); return false
+		var vid := str(targets[0])
+		if vid == missing:
+			print("FAIL assist_member_without_pose: 无位姿车收到派发"); return false
+		if not contain.has(vid):
+			print("FAIL assist_member_without_pose: 非成员收到派发 ", vid); return false
+		seen[vid] = true
+		if not _is_goto_face_pair(e):
+			print("FAIL assist_member_without_pose: 帧不是 [Goto,Face]"); return false
+		var m: Dictionary = e[1].missions[0]
+		var p := Vector2(float(m.x), float(m.y))
+		var hit := false
+		for r: Vector2 in ring:
+			if _approx(p, r):
+				hit = true
+		if not hit:
+			print("FAIL assist_member_without_pose: Goto 不在 ring_points(3) 上 ", p); return false
+	if seen.size() != 3:
+		print("FAIL assist_member_without_pose: 其余 3 台未恰好覆盖 ", seen.keys()); return false
+	print("PASS assist_member_without_pose"); return true
+
+
+## ⑭ 请求者本身是 containment car：先过滤再排除 ⇒ N=3、请求者不在任何 targets。
+func _test_assist_requester_in_formation() -> bool:
+	var fleet := _make_fleet(0, 4)
+	var contain: Array = fleet["contain"]
+	var requester := str(contain[0])
+	var sent := _run_assist(fleet["reg"], requester)
+	if sent.size() != 3:
+		print("FAIL assist_requester_in_formation: sent=%d（应 3）" % sent.size()); return false
+	var got: Array = []
+	for e: Array in sent:
+		var targets: Array = e[0]
+		var vid := str(targets[0])
+		if vid == requester:
+			print("FAIL assist_requester_in_formation: 请求者仍被指派 targets=", targets); return false
+		got.append(vid)
+	got.sort()
+	var want: Array = [str(contain[1]), str(contain[2]), str(contain[3])]
+	want.sort()
+	if got != want:
+		print("FAIL assist_requester_in_formation: ids=%s want %s" % [got, want]); return false
+	print("PASS assist_requester_in_formation"); return true
+
+
+## ⑮ 4 名 containment 成员 + 1 台 wall，请求者属 wall：4 帧、wall 车 0 帧、
+##    注册表编队状态前后完全一致（Coop 只读不写）。
+func _test_assist_other_formation_untouched() -> bool:
+	var fleet := _make_fleet(1, 4)
+	var reg = fleet["reg"]
+	var wall_vid := str(fleet["wall"][0])
+	var before := _formations_signature(reg)
+	var sent := _run_assist(reg, wall_vid)
+	if sent.size() != 4:
+		print("FAIL assist_other_formation_untouched: sent=%d（应 4）" % sent.size()); return false
+	for e: Array in sent:
+		var targets: Array = e[0]
+		if str(targets[0]) == wall_vid:
+			print("FAIL assist_other_formation_untouched: wall 车收到派发"); return false
+	var after := _formations_signature(reg)
+	if before != after:
+		print("FAIL assist_other_formation_untouched: formations 被改写\n before=%s\n after=%s"
+				% [before, after]); return false
+	print("PASS assist_other_formation_untouched"); return true
